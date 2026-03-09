@@ -1,0 +1,10 @@
+{
+  "platforms": {
+    "android": {
+      "packageName": "com.nanofuxion.tamerdevclient",
+      "moduleClassName": "com.nanofuxion.tamerdevclient.DevClientModule",
+      "sourceDir": "android",
+      "permissions": ["CAMERA", "ACCESS_NETWORK_STATE", "ACCESS_WIFI_STATE"]
+    }
+  }
+}
