@@ -1,10 +1,19 @@
-import { defineConfig } from '@lynx-js/rspeedy'
+import { fileURLToPath } from 'url'
+import path from 'path'
 import { pluginReactLynx } from '@lynx-js/react-rsbuild-plugin'
-import { pluginTypeCheck } from '@rsbuild/plugin-type-check'
+import { pluginTamer } from 'tamer-plugin'
 
-export default defineConfig({
-  plugins: [pluginReactLynx(), pluginTypeCheck()],
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
+
+export default {
   source: {
     entry: { 'dev-client': './src/index.tsx' },
+    alias: {
+      'tamer-app-shell': path.resolve(__dirname, '../tamer-app-shell/src/index.tsx'),
+      'tamer-screen': path.resolve(__dirname, '../tamer-screen/src/index.tsx'),
+      'tamer-icons': path.resolve(__dirname, '../tamer-icons/src/index.tsx'),
+      'tamer-insets': path.resolve(__dirname, '../tamer-insets/src/index.ts'),
+    },
   },
-})
+  plugins: [pluginTamer(), pluginReactLynx()],
+}
