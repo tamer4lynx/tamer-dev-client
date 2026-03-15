@@ -1,6 +1,12 @@
 .DevLauncher {
+  display: flex;
+  flex-direction: column;
   flex: 1;
-  min-height: 100vh;
+  flex-grow: 1;
+  flex-shrink: 1;
+  min-height: 0;
+  width: 100%;
+  height: 100%;
   padding: 24px;
   background-color: var(--dev-surface, #121212);
 }
@@ -10,8 +16,12 @@
   flex-direction: column;
   justify-content: flex-start;
   align-items: stretch;
-  min-height: 100vh;
-  width: 100vw;
+  flex: 1;
+  flex-grow: 1;
+  flex-shrink: 1;
+  min-height: 0;
+  width: 100%;
+  height: 100%;
   padding-bottom: 32px;
 }
 
@@ -37,6 +47,7 @@
   margin-bottom: 28px;
   display: flex;
   flex-direction: column;
+  flex-shrink: 0;
 }
 
 .DevLauncher__sectionTitle {

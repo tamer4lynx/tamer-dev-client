@@ -1,19 +1,23 @@
 import { useEffect } from '@lynx-js/react'
-import { Outlet, useLocation } from 'react-router'
-import { Screen, SafeArea, AppBar, Content, TabBar, AppShellProvider } from 'tamer-app-shell'
-import { useSystemUI, useThemeColors } from 'tamer-system-ui'
+import { useLocation } from 'react-router'
+import { Tabs } from 'tamer-router'
 import { useTamerNavigate } from 'tamer-router'
+import { useSystemUI, useThemeColors } from 'tamer-system-ui'
 import { useDevLauncher, resolveTheme } from '../DevLauncherContext'
 
-const TABS = [
-  { icon: 'link', label: 'Connect', path: '/' },
-  { icon: 'history', label: 'Recent', path: '/recent' },
-  { icon: 'wifi_find', label: 'Discover', path: '/discover' },
-] as const
+const ROUTE_TITLES: Record<string, string> = {
+  '/': 'Connect',
+  '/recent': 'Recent',
+  '/discover': 'Discover',
+}
+
+function titleForPath(pathname: string): string {
+  const p = pathname || '/'
+  return ROUTE_TITLES[p] ?? ROUTE_TITLES['/']
+}
 
 export default function Layout() {
   const location = useLocation()
-  const isTabRoute = TABS.some((t) => t.path === location.pathname)
   const { replace } = useTamerNavigate()
   const { setStatusBar, setNavigationBar } = useSystemUI()
   const osTheme = useThemeColors()
@@ -44,36 +48,41 @@ export default function Layout() {
 
   const barStyle = { backgroundColor: colors.surfaceContainer ?? '#1e1e1e', borderBottomColor: colors.surfaceContainer ?? '#333333' }
   const contentStyle = { backgroundColor: colors.surface }
+  const tabBarStyle = { backgroundColor: colors.surfaceContainer ?? '#000000', borderTopColor: colors.surfaceContainer ?? '#333333' }
 
   return (
-    <Screen>
-      <SafeArea edges={['top', 'left', 'right', 'bottom']}>
-        {incompatibleModalVisible && (
-          <view className="DevLauncher__modalOverlay" style={{ backgroundColor: 'rgba(0,0,0,0.6)' }} bindtap={() => setIncompatibleModalVisible(false)}>
-            <view className="DevLauncher__modal" style={{ backgroundColor: colors.surfaceContainer, borderColor: colors.surfaceContainer }} catchtap={() => {}}>
-              <text className="DevLauncher__modalTitle" style={{ color: colors.onSurface }}>Incompatible server</text>
-              <text className="DevLauncher__modalText" style={{ color: colors.onSurface }}>This app is missing native modules required by the project:</text>
-              <view className="DevLauncher__modalList">
-                {incompatibleModules.map((m) => (
-                  <text key={m.moduleClassName} className="DevLauncher__modalItem" style={{ color: colors.onSurface }}>
-                    {m.packageName || m.moduleClassName}
-                  </text>
-                ))}
-              </view>
-              <view className="DevLauncher__btn DevLauncher__btn--primary" style={{ backgroundColor: colors.primary, borderColor: colors.surfaceContainer }} bindtap={() => setIncompatibleModalVisible(false)}>
-                <text className="DevLauncher__btnText" style={{ color: colors.onSurface }}>OK</text>
-              </view>
+    <>
+      {incompatibleModalVisible && (
+        <view className="DevLauncher__modalOverlay" style={{ backgroundColor: 'rgba(0,0,0,0.6)' }} bindtap={() => setIncompatibleModalVisible(false)}>
+          <view className="DevLauncher__modal" style={{ backgroundColor: colors.surfaceContainer, borderColor: colors.surfaceContainer }} catchtap={() => {}}>
+            <text className="DevLauncher__modalTitle" style={{ color: colors.onSurface }}>Incompatible server</text>
+            <text className="DevLauncher__modalText" style={{ color: colors.onSurface }}>This app is missing native modules required by the project:</text>
+            <view className="DevLauncher__modalList">
+              {incompatibleModules.map((m) => (
+                <text key={m.moduleClassName} className="DevLauncher__modalItem" style={{ color: colors.onSurface }}>
+                  {m.packageName || m.moduleClassName}
+                </text>
+              ))}
+            </view>
+            <view className="DevLauncher__btn DevLauncher__btn--primary" style={{ backgroundColor: colors.primary, borderColor: colors.surfaceContainer }} bindtap={() => setIncompatibleModalVisible(false)}>
+              <text className="DevLauncher__btnText" style={{ color: colors.onSurface }}>OK</text>
             </view>
           </view>
-        )}
-        <AppShellProvider showAppBar showTabBar={isTabRoute}>
-          <AppBar title="Tamer4Lynx" style={barStyle} foregroundColor={colors.onSurface} />
-          <Content style={contentStyle}>
-            <Outlet />
-          </Content>
-          {isTabRoute ? <TabBar tabs={[...TABS]} style={{ backgroundColor: colors.surfaceContainer ?? '#000000', borderTopColor: colors.surfaceContainer ?? '#333333' }} iconColor={{ active: colors.onSurface ?? '#ffffff', inactive: '#888888' }} /> : null}
-        </AppShellProvider>
-      </SafeArea>
-    </Screen>
+        </view>
+      )}
+      <Tabs
+        titleForPath={titleForPath}
+        screenOptions={{
+          headerStyle: barStyle,
+          tabBarStyle,
+          contentStyle,
+          iconColor: { active: colors.onSurface ?? '#ffffff', inactive: '#888888' },
+        }}
+      >
+        <Tabs.Screen name="index" path="/" options={{ title: 'Connect', icon: 'link', label: 'Connect' }} />
+        <Tabs.Screen name="recent" path="/recent" options={{ title: 'Recent', icon: 'history', label: 'Recent' }} />
+        <Tabs.Screen name="discover" path="/discover" options={{ title: 'Discover', icon: 'wifi_find', label: 'Discover' }} />
+      </Tabs>
+    </>
   )
 }
