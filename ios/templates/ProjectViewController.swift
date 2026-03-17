@@ -1,5 +1,6 @@
 import UIKit
 import Lynx
+import tamerdevclient
 import tamerinsets
 
 class ProjectViewController: UIViewController {
@@ -16,6 +17,7 @@ class ProjectViewController: UIViewController {
         view.preservesSuperviewLayoutMargins = false
         viewRespectsSystemMinimumLayoutMargins = false
         setupLynxView()
+        TamerRelogLogService.connect()
         devClientManager = DevClientManager(onReload: { [weak self] in
             self?.reloadLynxView()
         })
@@ -100,6 +102,7 @@ class ProjectViewController: UIViewController {
         super.viewWillDisappear(animated)
         if isBeingDismissed || isMovingFromParent {
             devClientManager?.disconnect()
+            TamerRelogLogService.disconnect()
         }
     }
 }

@@ -1,9 +1,17 @@
 {
   "name": "@tamer4lynx/tamer-dev-client",
-  "version": "0.0.4",
+  "version": "0.0.5",
   "publishConfig": { "access": "public", "tag": "prerelease" },
   "type": "module",
   "description": "Native dev client module for Tamer4Lynx - QR scan, discovery, URL persistence, reload bridge, embedded dev launcher UI",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tamer4lynx/tamer-dev-client.git"
+  },
+  "homepage": "https://github.com/tamer4lynx/tamer-dev-client#readme",
+  "bugs": {
+    "url": "https://github.com/tamer4lynx/tamer-dev-client/issues"
+  },
   "main": "dist/dev-client.js",
   "types": "dist/dev-client.d.ts",
   "exports": {
