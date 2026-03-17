@@ -1,6 +1,6 @@
 {
   "name": "@tamer4lynx/tamer-dev-client",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "publishConfig": { "access": "public", "tag": "prerelease" },
   "type": "module",
   "description": "Native dev client module for Tamer4Lynx - QR scan, discovery, URL persistence, reload bridge, embedded dev launcher UI",
