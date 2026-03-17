@@ -1,20 +1,29 @@
 {
-  "name": "tamer-dev-client",
-  "version": "0.1.0",
+  "name": "@tamer4lynx/tamer-dev-client",
+  "version": "0.0.1",
+  "publishConfig": { "access": "public", "tag": "prerelease" },
   "type": "module",
-  "private": true,
   "description": "Native dev client module for Tamer4Lynx - QR scan, discovery, URL persistence, reload bridge, embedded dev launcher UI",
+  "main": "dist/dev-client.js",
+  "types": "dist/dev-client.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/dev-client.d.ts",
+      "import": "./dist/dev-client.js",
+      "default": "./dist/dev-client.js"
+    }
+  },
   "scripts": {
     "build": "rspeedy build"
   },
   "dependencies": {
     "@lynx-js/react": "^0.112.1",
     "react-router": "^6.28.0",
-    "tamer-app-shell": "*",
-    "tamer-insets": "*",
-    "tamer-system-ui": "*",
-    "tamer-plugin": "*",
-    "tamer-router": "*"
+    "@tamer4lynx/tamer-app-shell": "^0.0.1",
+    "@tamer4lynx/tamer-insets": "^0.0.1",
+    "@tamer4lynx/tamer-system-ui": "^0.0.1",
+    "@tamer4lynx/tamer-plugin": "^0.0.1",
+    "@tamer4lynx/tamer-router": "^0.0.1"
   },
   "devDependencies": {
     "@lynx-js/react-rsbuild-plugin": "^0.10.10",
@@ -26,5 +35,5 @@
   },
   "author": "Nanofuxion",
   "license": "MIT",
-  "files": ["dist", "android", "src", "lynx.config.ts"]
+  "files": ["dist", "android/src", "android/build.gradle.kts", "android/templates", "ios", "lynx.config.ts"]
 }

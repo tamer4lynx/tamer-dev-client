@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from '@lynx-js/react'
 import { useDevLauncher, resolveTheme } from '../DevLauncherContext'
-import { getThemeColorsAsync } from 'tamer-system-ui'
+import { getThemeColorsAsync } from '@tamer4lynx/tamer-system-ui'
 
 declare const NativeModules: Record<string, unknown> | undefined
 

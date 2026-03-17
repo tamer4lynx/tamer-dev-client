@@ -5,7 +5,7 @@ Native dev client module for Tamer4Lynx — QR scan, discovery, URL persistence,
 ## Installation
 
 ```bash
-npm install tamer-dev-client
+npm install @tamer4lynx/tamer-dev-client
 ```
 
 Add to your app's dependencies and run `t4l link`. Used by **tamer-dev-app** for the dev launcher experience.

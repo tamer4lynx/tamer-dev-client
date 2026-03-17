@@ -13,5 +13,16 @@
         "NSCameraUsageDescription": "Used to scan QR codes for connecting to the dev server"
       }
     }
+  },
+  "hostTransforms": {
+    "android": {
+      "templateDir": "android/templates",
+      "manifestActivities": ["ProjectActivity", "PortraitCaptureActivity"],
+      "replaceTemplateProvider": true
+    },
+    "ios": {
+      "templateDir": "ios/templates",
+      "injectViewControllers": ["DevLauncherViewController", "ProjectViewController"]
+    }
   }
 }

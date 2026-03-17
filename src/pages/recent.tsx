@@ -1,5 +1,5 @@
 import { useCallback } from '@lynx-js/react'
-import { useTamerNavigate } from 'tamer-router'
+import { useTamerNavigate } from '@tamer4lynx/tamer-router'
 import { useDevLauncher, resolveTheme } from '../DevLauncherContext'
 
 export default function RecentPage() {
