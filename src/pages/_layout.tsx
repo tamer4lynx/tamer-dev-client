@@ -38,9 +38,9 @@ export default function Layout() {
   }, [replace, navigateToConnectRef])
 
   useEffect(() => {
-    setStatusBar({ color: colors.surface, style: 'auto' })
-    setNavigationBar({ color: colors.surfaceContainer ?? '#000000', style: 'auto' })
-  }, [colors.surface, colors.surfaceContainer, setStatusBar, setNavigationBar])
+    setStatusBar({ color: colors.surface, style: colors.isDark ? 'light' : 'dark' })
+    setNavigationBar({ color: colors.surfaceContainer ?? '#000000', style: colors.isDark ? 'light' : 'dark' })
+  }, [colors.surface, colors.surfaceContainer, colors.isDark, setStatusBar, setNavigationBar])
 
   useEffect(() => {
     setTheme(osTheme ?? null)
@@ -74,6 +74,7 @@ export default function Layout() {
         titleForPath={titleForPath}
         screenOptions={{
           headerStyle: barStyle,
+          headerForegroundColor: colors.onSurface ?? '#ffffff',
           tabBarStyle,
           contentStyle,
           iconColor: { active: colors.onSurface ?? '#ffffff', inactive: '#888888' },

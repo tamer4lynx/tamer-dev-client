@@ -27,8 +27,19 @@ export const FALLBACK_THEME: DevLauncherTheme = {
   isDark: true,
 }
 
+export const LIGHT_FALLBACK: DevLauncherTheme = {
+  surface: '#f5f5f5',
+  surfaceContainer: '#e8e8e8',
+  primary: '#007aff',
+  primaryDark: '#0051d5',
+  background: '#ffffff',
+  onSurface: '#000000',
+  onSurfaceVariant: '#6b6b6b',
+  isDark: false,
+}
+
 export function resolveTheme(theme: DevLauncherTheme | null | undefined): DevLauncherTheme {
-  if (theme == null) return FALLBACK_THEME
+  if (theme == null) return LIGHT_FALLBACK
   return {
     surface: theme.surface ?? FALLBACK_THEME.surface,
     surfaceContainer: theme.surfaceContainer ?? FALLBACK_THEME.surfaceContainer,

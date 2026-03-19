@@ -29,3 +29,5 @@ Requires: `tamer-app-shell`, `tamer-insets`, `tamer-system-ui`, `tamer-plugin`, 
 ## Platform
 
 Uses **lynx.ext.json**. Run `t4l link` after adding to your app.
+
+iOS template `ios/templates/LynxInitProcessor.swift` ships with **empty** `GENERATED IMPORTS` / `GENERATED AUTOLINK` sections; `t4l link ios` fills them from discovered native packages. Do not commit a hand-written list of `globalConfig.register(...)` into that template — regenerate via link when dependencies change.
