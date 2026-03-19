@@ -5,7 +5,7 @@ import { getThemeColorsAsync } from '@tamer4lynx/tamer-system-ui'
 declare const NativeModules: Record<string, unknown> | undefined
 
 export default function ConnectPage() {
-  const { url, setUrl, openProject, onScanQR, theme } = useDevLauncher()
+  const { url, setUrl, openProject, onScanQR, theme, connectError } = useDevLauncher()
   const colors = resolveTheme(theme)
   const [debugRaw, setDebugRaw] = useState('...')
 
@@ -38,6 +38,9 @@ export default function ConnectPage() {
           placeholder="http://localhost:3000/example"
           bindinput={(e) => setUrl(e.detail.value)}
         />
+        {connectError ? (
+          <text className="DevLauncher__hint" style={{ color: '#ef4444', marginBottom: '12px' }}>{connectError}</text>
+        ) : null}
         <view className="DevLauncher__buttons">
           <view className="DevLauncher__btn DevLauncher__btn--primary" style={{ backgroundColor: colors.primary, borderColor: colors.surfaceContainer }} bindtap={onConnect}>
             <text className="DevLauncher__btnText" style={{ color: colors.surface }}>Connect</text>

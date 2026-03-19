@@ -100,6 +100,8 @@ public final class DevClientModule: NSObject, LynxModule {
             "getDevServerUrl":          NSStringFromSelector(#selector(getDevServerUrl(_:))),
             "setDevServerUrl":          NSStringFromSelector(#selector(setDevServerUrl(_:))),
             "getRecentUrls":            NSStringFromSelector(#selector(getRecentUrls(_:))),
+            "getRecentEntries":         NSStringFromSelector(#selector(getRecentEntries(_:))),
+            "removeRecentUrl":          NSStringFromSelector(#selector(removeRecentUrl(_:))),
             "clearDevServerUrl":        NSStringFromSelector(#selector(clearDevServerUrl)),
             "scanQR":                   NSStringFromSelector(#selector(scanQR)),
             "reloadWithProjectBundle":  NSStringFromSelector(#selector(reloadWithProjectBundle)),
@@ -114,6 +116,48 @@ public final class DevClientModule: NSObject, LynxModule {
 
     public static weak var shared: DevClientModule?
 
+    private static let supportedModulesLock = NSLock()
+    private static var supportedModuleClassNamesInternal = Set<String>()
+
+    private static let bundledManifestLock = NSLock()
+    private static var bundledManifestResolved = false
+    private static var bundledManifestClassNames = Set<String>()
+
+    /// Same JVM-style class names as Android meta.json / discoverNativeExtensions (e.g. com.nanofuxion.tamerrouter.TamerRouterNativeModule).
+    public static func attachSupportedModuleClassNames(_ names: [String]) {
+        supportedModulesLock.lock()
+        supportedModuleClassNamesInternal = Set(names.filter { !$0.isEmpty })
+        supportedModulesLock.unlock()
+    }
+
+    /// Fallback when `attachSupportedModuleClassNames` was not run (e.g. custom LynxInit): `tamer-host-native-modules.json` from app Resources (written by Tamer iOS autolink).
+    private static func classNamesFromBundledHostManifest() -> Set<String> {
+        bundledManifestLock.lock()
+        defer { bundledManifestLock.unlock() }
+        if bundledManifestResolved {
+            return bundledManifestClassNames
+        }
+        bundledManifestResolved = true
+        guard let url = Bundle.main.url(forResource: "tamer-host-native-modules", withExtension: "json"),
+              let data = try? Data(contentsOf: url),
+              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let arr = obj["moduleClassNames"] as? [String] else {
+            return []
+        }
+        bundledManifestClassNames = Set(arr.filter { !$0.isEmpty })
+        return bundledManifestClassNames
+    }
+
+    private static func supportedModuleClassNamesSnapshot() -> Set<String> {
+        supportedModulesLock.lock()
+        let injected = supportedModuleClassNamesInternal
+        supportedModulesLock.unlock()
+        if !injected.isEmpty {
+            return injected
+        }
+        return classNamesFromBundledHostManifest()
+    }
+
     /// Present a QR scanner; call completion with scanned URL string or nil on cancel.
     public static var presentQRScanner: ((@escaping (String?) -> Void) -> Void)?
 
@@ -124,7 +168,86 @@ public final class DevClientModule: NSObject, LynxModule {
 
     private weak var lynxContext: LynxContext?
     private var bonjourResolver: BonjourResolver?
-    private var lastDiscovered: [[String: String]] = []
+    private var lastDiscovered: [[String: Any]] = []
+
+    private static func packagerRunningSync(_ baseUrl: String) -> Bool {
+        let trimmed = baseUrl.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        guard let url = URL(string: trimmed + "/status") else { return false }
+        let sem = DispatchSemaphore(value: 0)
+        var running = false
+        var req = URLRequest(url: url)
+        req.timeoutInterval = 5
+        URLSession.shared.dataTask(with: req) { data, _, _ in
+            defer { sem.signal() }
+            guard let data = data, let text = String(data: data, encoding: .utf8) else { return }
+            running = text.contains("packager-status:running")
+        }.resume()
+        _ = sem.wait(timeout: .now() + .seconds(6))
+        return running
+    }
+
+    private static func fetchMetaJsonSync(_ baseUrl: String) -> [String: Any]? {
+        let trimmed = baseUrl.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        guard let url = URL(string: trimmed + "/meta.json") else { return nil }
+        let sem = DispatchSemaphore(value: 0)
+        var result: [String: Any]?
+        var req = URLRequest(url: url)
+        req.timeoutInterval = 5
+        URLSession.shared.dataTask(with: req) { data, _, _ in
+            defer { sem.signal() }
+            guard let data = data,
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                return
+            }
+            result = json
+        }.resume()
+        _ = sem.wait(timeout: .now() + .seconds(6))
+        return result
+    }
+
+    private static func metaModulesCompatibleFromJson(_ json: [String: Any], supported: Set<String>) -> Bool {
+        if supported.isEmpty { return true }
+        guard let modules = json["nativeModules"] as? [[String: Any]] else { return true }
+        for item in modules {
+            let cls = item["moduleClassName"] as? String ?? ""
+            if !cls.isEmpty && !supported.contains(cls) {
+                return false
+            }
+        }
+        return true
+    }
+
+    private func enrichDiscoveredServers(_ raw: [[String: String]]) {
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            guard let self = self else { return }
+            let supported = DevClientModule.supportedModuleClassNamesSnapshot()
+            var enriched: [[String: Any]] = []
+            for s in raw {
+                guard let url = s["url"], !url.isEmpty else { continue }
+                guard DevClientModule.packagerRunningSync(url) else { continue }
+                let meta = DevClientModule.fetchMetaJsonSync(url)
+                let compat = meta.map { DevClientModule.metaModulesCompatibleFromJson($0, supported: supported) } ?? true
+                let bonjourName = s["name"] ?? ""
+                let metaName = meta?["name"] as? String ?? ""
+                let displayName = metaName.isEmpty ? bonjourName : metaName
+                var row: [String: Any] = [
+                    "url": url,
+                    "name": displayName,
+                    "compatible": compat
+                ]
+                if let icon = meta?["icon"] as? String, !icon.isEmpty {
+                    row["iconUrl"] = icon
+                }
+                if let key = meta?["tamerAppKey"] as? String, !key.isEmpty {
+                    row["tamerAppKey"] = key
+                }
+                enriched.append(row)
+            }
+            DispatchQueue.main.async {
+                self.emitDiscoveredServers(enriched)
+            }
+        }
+    }
 
     // MARK: - Init
 
@@ -160,6 +283,21 @@ public final class DevClientModule: NSObject, LynxModule {
         callback(DevServerPrefs.getRecentUrls() as NSArray)
     }
 
+    @objc func getRecentEntries(_ callback: LynxCallbackBlock) {
+        let rows: [NSDictionary] = DevServerPrefs.getRecentEntries().map { e in
+            var d: [String: Any] = ["url": e.url]
+            if let k = e.tamerAppKey, !k.isEmpty { d["tamerAppKey"] = k }
+            if let l = e.label, !l.isEmpty { d["label"] = l }
+            if let i = e.iconUrl, !i.isEmpty { d["iconUrl"] = i }
+            return d as NSDictionary
+        }
+        callback(rows as NSArray)
+    }
+
+    @objc func removeRecentUrl(_ url: String) {
+        DevServerPrefs.removeRecentUrl(url)
+    }
+
     @objc func clearDevServerUrl() {
         DevServerPrefs.clear()
     }
@@ -187,7 +325,7 @@ public final class DevClientModule: NSObject, LynxModule {
         guard bonjourResolver == nil else { return }
         let resolver = BonjourResolver()
         resolver.onServersChanged = { [weak self] servers in
-            self?.emitDiscoveredServers(servers)
+            self?.enrichDiscoveredServers(servers)
         }
         bonjourResolver = resolver
         DispatchQueue.main.async {
@@ -201,30 +339,61 @@ public final class DevClientModule: NSObject, LynxModule {
     }
 
     @objc func getDiscoveredServers(_ callback: LynxCallbackBlock) {
-        let list = lastDiscovered.map { s -> NSDictionary in
-            ["url": s["url"] ?? "", "name": s["name"] ?? ""] as NSDictionary
+        let list: [NSDictionary] = lastDiscovered.map { s in
+            var dict: [String: Any] = [
+                "url": (s["url"] as? String) ?? "",
+                "name": (s["name"] as? String) ?? "",
+                "compatible": (s["compatible"] as? Bool) ?? true
+            ]
+            if let icon = s["iconUrl"] as? String, !icon.isEmpty { dict["iconUrl"] = icon }
+            if let key = s["tamerAppKey"] as? String, !key.isEmpty { dict["tamerAppKey"] = key }
+            return dict as NSDictionary
         }
         callback(list as NSArray)
     }
 
     @objc func checkServerCompatibility(_ baseUrl: String, callback: @escaping LynxCallbackBlock) {
         DispatchQueue.global(qos: .utility).async {
+            let supported = DevClientModule.supportedModuleClassNamesSnapshot()
             let trimmed = baseUrl.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
             guard let url = URL(string: trimmed + "/meta.json") else {
-                callback([true, []] as NSArray)
+                DispatchQueue.main.async {
+                    callback([NSNumber(value: true), []] as NSArray)
+                }
                 return
             }
             var req = URLRequest(url: url)
             req.timeoutInterval = 5
             URLSession.shared.dataTask(with: req) { data, _, _ in
-                guard let data = data,
-                      let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                      let modules = json["nativeModules"] as? [[String: Any]] else {
-                    callback([true, []] as NSArray)
+                if supported.isEmpty {
+                    DispatchQueue.main.async {
+                        callback([NSNumber(value: true), []] as NSArray)
+                    }
                     return
                 }
-                let required = modules.compactMap { $0["moduleClassName"] as? String }
-                callback([true, required] as NSArray)
+                guard let data = data,
+                      let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                    DispatchQueue.main.async {
+                        callback([NSNumber(value: true), []] as NSArray)
+                    }
+                    return
+                }
+                let modules = json["nativeModules"] as? [[String: Any]] ?? []
+                var missing: [[String: String]] = []
+                for item in modules {
+                    let pkg = item["packageName"] as? String ?? ""
+                    let cls = item["moduleClassName"] as? String ?? ""
+                    if !cls.isEmpty && !supported.contains(cls) {
+                        missing.append(["packageName": pkg, "moduleClassName": cls])
+                    }
+                }
+                let compatible = missing.isEmpty
+                let outMaps: [NSDictionary] = missing.map {
+                    ["packageName": $0["packageName"] ?? "", "moduleClassName": $0["moduleClassName"] ?? ""] as NSDictionary
+                }
+                DispatchQueue.main.async {
+                    callback([NSNumber(value: compatible), outMaps] as NSArray)
+                }
             }.resume()
         }
     }
@@ -236,13 +405,17 @@ public final class DevClientModule: NSObject, LynxModule {
         sendEvent("devclient:scanResult", payload: payload)
     }
 
-    private func emitDiscoveredServers(_ servers: [[String: String]]) {
+    private func emitDiscoveredServers(_ servers: [[String: Any]]) {
         lastDiscovered = servers
-        let payloadServers = servers.map { server -> [String: Any] in
-            [
-                "url": server["url"] ?? "",
-                "name": server["name"] ?? ""
+        let payloadServers: [[String: Any]] = servers.map { s in
+            var row: [String: Any] = [
+                "url": s["url"] as? String ?? "",
+                "name": s["name"] as? String ?? "",
+                "compatible": s["compatible"] as? Bool ?? true
             ]
+            if let icon = s["iconUrl"] as? String, !icon.isEmpty { row["iconUrl"] = icon }
+            if let key = s["tamerAppKey"] as? String, !key.isEmpty { row["tamerAppKey"] = key }
+            return row
         }
         let payload = (try? JSONSerialization.data(withJSONObject: ["servers": payloadServers]))
             .flatMap { String(data: $0, encoding: .utf8) } ?? "{\"servers\":[]}"
@@ -261,11 +434,42 @@ public final class DevClientModule: NSObject, LynxModule {
 
 // MARK: - DevServerPrefs
 
+public struct DevRecentEntry {
+    public var url: String
+    public var tamerAppKey: String?
+    public var label: String?
+    public var iconUrl: String?
+}
+
+private struct RecentEntryCodable: Codable {
+    var url: String
+    var tamerAppKey: String?
+    var label: String?
+    var iconUrl: String?
+}
+
+private struct RecentListV2: Codable {
+    var v: Int = 1
+    var items: [RecentEntryCodable]
+}
+
 public final class DevServerPrefs {
     private static let suite = "tamer_dev_server"
     private static let keyUrl = "dev_server_url"
     private static let keyRecent = "dev_server_recent"
+    private static let keyRecentV2 = "dev_server_recent_v2"
+    private static let keyMetaCache = "dev_server_meta_cache"
+    private static let keyProjectInitData = "project_init_data_json"
+    private static let recentLock = NSLock()
     private static var defaults: UserDefaults { UserDefaults(suiteName: suite) ?? .standard }
+
+    public static func getProjectInitDataJson() -> String {
+        defaults.string(forKey: keyProjectInitData) ?? "{}"
+    }
+
+    public static func getProjectInitTemplateData() -> LynxTemplateData {
+        LynxTemplateData(json: getProjectInitDataJson())
+    }
 
     public static func getUrl() -> String? {
         defaults.string(forKey: keyUrl)
@@ -273,26 +477,151 @@ public final class DevServerPrefs {
 
     public static func setUrl(_ url: String) {
         defaults.set(url, forKey: keyUrl)
-        addRecent(url)
+        mergeRecentImmediate(url)
+        DispatchQueue.global(qos: .utility).async {
+            enrichRecentWithMeta(url)
+        }
     }
 
     public static func getRecentUrls() -> [String] {
-        guard let json = defaults.string(forKey: keyRecent),
-              let data = json.data(using: .utf8),
-              let arr = try? JSONDecoder().decode([String].self, from: data) else { return [] }
-        return Array(arr.prefix(10))
+        loadRecentItems().map(\.url)
     }
 
-    public static func addRecent(_ url: String) {
-        var current = getRecentUrls().filter { $0 != url }
-        current.insert(url, at: 0)
-        if let data = try? JSONEncoder().encode(Array(current.prefix(10))),
-           let json = String(data: data, encoding: .utf8) {
-            defaults.set(json, forKey: keyRecent)
+    public static func getRecentEntries() -> [DevRecentEntry] {
+        loadRecentItems().map {
+            DevRecentEntry(url: $0.url, tamerAppKey: $0.tamerAppKey, label: $0.label, iconUrl: $0.iconUrl)
         }
+    }
+
+    public static func removeRecentUrl(_ url: String) {
+        let trimmed = url.trimmingCharacters(in: .whitespaces)
+        recentLock.lock()
+        defer { recentLock.unlock() }
+        migrateLegacyRecentIfNeeded()
+        let next = loadRecentItemsUnlocked().filter { $0.url != trimmed }
+        saveRecentItemsUnlocked(next)
     }
 
     public static func clear() {
         defaults.removePersistentDomain(forName: suite)
+    }
+
+    private static func migrateLegacyRecentIfNeeded() {
+        if defaults.string(forKey: keyRecentV2) != nil { return }
+        var items: [RecentEntryCodable] = []
+        if let json = defaults.string(forKey: keyRecent),
+           let data = json.data(using: .utf8),
+           let arr = try? JSONDecoder().decode([String].self, from: data) {
+            items = arr.map { RecentEntryCodable(url: $0, tamerAppKey: nil, label: nil, iconUrl: nil) }
+        }
+        let v2 = RecentListV2(v: 1, items: Array(items.prefix(10)))
+        if let data = try? JSONEncoder().encode(v2), let s = String(data: data, encoding: .utf8) {
+            defaults.set(s, forKey: keyRecentV2)
+        }
+    }
+
+    private static func loadRecentItems() -> [RecentEntryCodable] {
+        recentLock.lock()
+        defer { recentLock.unlock() }
+        migrateLegacyRecentIfNeeded()
+        return loadRecentItemsUnlocked()
+    }
+
+    private static func loadRecentItemsUnlocked() -> [RecentEntryCodable] {
+        guard let json = defaults.string(forKey: keyRecentV2),
+              let data = json.data(using: .utf8),
+              let v2 = try? JSONDecoder().decode(RecentListV2.self, from: data) else {
+            return []
+        }
+        return v2.items
+    }
+
+    private static func saveRecentItemsUnlocked(_ items: [RecentEntryCodable]) {
+        let v2 = RecentListV2(v: 1, items: Array(items.prefix(10)))
+        if let data = try? JSONEncoder().encode(v2), let s = String(data: data, encoding: .utf8) {
+            defaults.set(s, forKey: keyRecentV2)
+        }
+    }
+
+    private static func mergeRecentImmediate(_ url: String) {
+        recentLock.lock()
+        defer { recentLock.unlock() }
+        migrateLegacyRecentIfNeeded()
+        let cur = loadRecentItemsUnlocked().filter { $0.url != url }
+        let next = [RecentEntryCodable(url: url, tamerAppKey: nil, label: nil, iconUrl: nil)] + cur
+        saveRecentItemsUnlocked(Array(next.prefix(10)))
+    }
+
+    private static func fetchMetaDict(url base: String) -> [String: Any]? {
+        let trimmed = base.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        guard let u = URL(string: trimmed + "/meta.json") else { return nil }
+        let sem = DispatchSemaphore(value: 0)
+        var out: [String: Any]?
+        var req = URLRequest(url: u)
+        req.timeoutInterval = 5
+        URLSession.shared.dataTask(with: req) { data, _, _ in
+            defer { sem.signal() }
+            guard let data = data,
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return }
+            out = json
+        }.resume()
+        _ = sem.wait(timeout: .now() + .seconds(6))
+        return out
+    }
+
+    private static func buildProjectInitData(_ meta: [String: Any]?) -> String {
+        guard let meta = meta else { return "{}" }
+        var o: [String: String] = [:]
+        if let s = meta["tamerAppKey"] as? String, !s.isEmpty { o["tamerAppKey"] = s }
+        if let s = meta["androidPackageName"] as? String, !s.isEmpty { o["androidPackageName"] = s }
+        if let s = meta["iosBundleId"] as? String, !s.isEmpty { o["iosBundleId"] = s }
+        guard !o.isEmpty,
+              let data = try? JSONSerialization.data(withJSONObject: o),
+              let str = String(data: data, encoding: .utf8) else { return "{}" }
+        return str
+    }
+
+    private static func updateMetaCache(url: String, key: String?, icon: String?, label: String?) {
+        var root: [String: Any] = [:]
+        if let existing = defaults.string(forKey: keyMetaCache),
+           let data = existing.data(using: .utf8),
+           let parsed = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            root = parsed
+        }
+        var entry: [String: Any] = ["updatedAt": Date().timeIntervalSince1970]
+        if let key = key { entry["tamerAppKey"] = key }
+        if let icon = icon { entry["iconUrl"] = icon }
+        if let label = label { entry["label"] = label }
+        root[url] = entry
+        if let data = try? JSONSerialization.data(withJSONObject: root),
+           let s = String(data: data, encoding: .utf8) {
+            defaults.set(s, forKey: keyMetaCache)
+        }
+    }
+
+    private static func enrichRecentWithMeta(_ normalizedUrl: String) {
+        let meta = fetchMetaDict(url: normalizedUrl)
+        let initJson = buildProjectInitData(meta)
+        defaults.set(initJson, forKey: keyProjectInitData)
+        let key = (meta?["tamerAppKey"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty
+        let icon = (meta?["icon"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty
+        let label = (meta?["name"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty
+        if key != nil || icon != nil || label != nil {
+            updateMetaCache(url: normalizedUrl, key: key, icon: icon, label: label)
+        }
+        recentLock.lock()
+        defer { recentLock.unlock() }
+        migrateLegacyRecentIfNeeded()
+        let list = loadRecentItemsUnlocked()
+        let others = list.filter { $0.url != normalizedUrl }
+            .filter { item in key == nil || item.tamerAppKey != key }
+        let updated = RecentEntryCodable(url: normalizedUrl, tamerAppKey: key, label: label, iconUrl: icon)
+        saveRecentItemsUnlocked([updated] + others)
+    }
+}
+
+private extension String {
+    var nonEmpty: String? {
+        isEmpty ? nil : self
     }
 }

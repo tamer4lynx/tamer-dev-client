@@ -1,5 +1,19 @@
 export type RequiredModule = { packageName: string; moduleClassName: string }
 
+function wrapCheckServerCompatibilityCallback(
+  callback: (compatible?: unknown, rawModules?: unknown) => void
+): (a?: unknown, b?: unknown) => void {
+  return (a?: unknown, b?: unknown) => {
+    let compatible: unknown = a
+    let rawModules: unknown = b
+    if (Array.isArray(a) && a.length >= 2 && b === undefined) {
+      compatible = a[0]
+      rawModules = a[1]
+    }
+    callback(compatible, rawModules)
+  }
+}
+
 declare const NativeModules: {
   JiggleModule?: { vibrate: (duration: number) => void }
   DevClientModule: {
@@ -8,7 +22,11 @@ declare const NativeModules: {
     setDevServerUrl: (url: string) => void
     getDevServerUrl: (callback: (url: string) => void) => void
     getRecentUrls: (callback: (urls: string[]) => void) => void
-    getDiscoveredServers: (callback: (servers: { url: string; name: string }[]) => void) => void
+    getRecentEntries?: (callback: (rows: unknown) => void) => void
+    removeRecentUrl?: (url: string) => void
+    getDiscoveredServers: (
+      callback: (servers: { url: string; name: string; compatible?: boolean; iconUrl?: string; tamerAppKey?: string }[]) => void
+    ) => void
     startDiscovery: () => void
     stopDiscovery: () => void
     clearDevServerUrl: () => void
@@ -20,8 +38,12 @@ declare const NativeModules: {
 export function devCall(method: string, data?: Record<string, unknown>, callback?: (res?: unknown, res2?: unknown) => void) {
   const mod = NativeModules.DevClientModule
   if (!mod) return
+  const cb =
+    method === 'checkServerCompatibility' && callback != null
+      ? wrapCheckServerCompatibilityCallback(callback)
+      : callback
   if (typeof mod.call === 'function') {
-    mod.call(method, { data: data ?? {} }, callback ?? (() => {}))
+    mod.call(method, { data: data ?? {} }, cb ?? (() => {}))
   } else if (method === 'setDevServerUrl' && data?.url) {
     mod.setDevServerUrl?.(String(data.url))
   } else if (method === 'scanQR') {
@@ -36,10 +58,18 @@ export function devCall(method: string, data?: Record<string, unknown>, callback
     mod.getDevServerUrl?.(callback)
   } else if (method === 'getRecentUrls' && callback) {
     mod.getRecentUrls?.(callback)
+  } else if (method === 'getRecentEntries' && callback) {
+    mod.getRecentEntries?.(callback)
+  } else if (method === 'removeRecentUrl' && data?.url) {
+    mod.removeRecentUrl?.(String(data.url))
   } else if (method === 'getDiscoveredServers' && callback) {
     mod.getDiscoveredServers?.(callback)
-  } else if (method === 'checkServerCompatibility' && data?.url && callback) {
-    mod.checkServerCompatibility?.(String(data.url), callback)
+  } else if (method === 'checkServerCompatibility' && data?.url && cb) {
+    if (typeof mod.checkServerCompatibility === 'function') {
+      mod.checkServerCompatibility(String(data.url), cb as (c: boolean, m: unknown) => void)
+    } else {
+      cb(true, [])
+    }
   }
 }
 

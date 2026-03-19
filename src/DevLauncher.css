@@ -70,11 +70,114 @@
   gap: 10px;
 }
 
+.DevLauncher__swipeTrack {
+  position: relative;
+  overflow: hidden;
+  border-radius: 12px;
+  border: 1px solid var(--dev-outline, #333333);
+}
+
+.DevLauncher__swipeDelete {
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: #dc2626;
+}
+
+.DevLauncher__swipeDeleteText {
+  font-size: 15px;
+  font-weight: 600;
+  color: #ffffff;
+}
+
 .DevLauncher__recentItem {
   padding: 14px 16px;
   background-color: var(--dev-surface-container, #222222);
   border-radius: 12px;
   border: 1px solid var(--dev-outline, #333333);
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 12px;
+}
+
+.DevLauncher__serverRowInner {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+  min-width: 0;
+}
+
+.DevLauncher__serverRowEmbed {
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  border-width: 0;
+  background-color: transparent;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 12px;
+}
+
+.DevLauncher__swipeForeground.DevLauncher__recentItem {
+  position: relative;
+  width: 100%;
+  box-sizing: border-box;
+  border-radius: 12px;
+  border-width: 0;
+}
+
+.DevLauncher__statusDot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.DevLauncher__statusDot--online {
+  background-color: #22c55e;
+}
+
+.DevLauncher__statusDot--offline {
+  background-color: #ef4444;
+}
+
+.DevLauncher__statusDot--checking {
+  background-color: #737373;
+}
+
+.DevLauncher__statusDot--stale {
+  background-color: #a3a3a3;
+}
+
+.DevLauncher__statusDot--mismatch {
+  background-color: #f59e0b;
+}
+
+.DevLauncher__rowIcon {
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  flex-shrink: 0;
+  background-color: var(--dev-outline, #333333);
+}
+
+.DevLauncher__rowIcon--placeholder {
+  border: 1px solid var(--dev-outline, #444444);
+}
+
+.DevLauncher__recentItemMain {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 .DevLauncher__recentItem--discovered {

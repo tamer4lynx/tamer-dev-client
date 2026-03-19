@@ -12,6 +12,7 @@ import com.lynx.tasm.LynxViewBuilder
 import {{PACKAGE_NAME}}.DevClientManager
 import {{PACKAGE_NAME}}.generated.GeneratedLynxExtensions
 import {{PACKAGE_NAME}}.generated.GeneratedActivityLifecycle
+import com.nanofuxion.tamerdevclient.DevClientModule
 import com.nanofuxion.tamerdevclient.TamerRelogLogService
 
 class ProjectActivity : AppCompatActivity() {
@@ -28,7 +29,7 @@ class ProjectActivity : AppCompatActivity() {
         setContentView(lynxView)
         GeneratedActivityLifecycle.onViewAttached(lynxView)
         GeneratedLynxExtensions.onHostViewChanged(lynxView)
-        lynxView?.renderTemplateUrl("main.lynx.bundle", "")
+        lynxView?.renderTemplateUrl("main.lynx.bundle", DevClientModule.getProjectInitDataJson(this))
         TamerRelogLogService.init(this)
         TamerRelogLogService.connect()
         devClientManager = DevClientManager(this) { reloadProjectView() }
@@ -46,7 +47,7 @@ class ProjectActivity : AppCompatActivity() {
         setContentView(nextView)
         GeneratedActivityLifecycle.onViewAttached(nextView)
         GeneratedLynxExtensions.onHostViewChanged(nextView)
-        nextView.renderTemplateUrl("main.lynx.bundle", "")
+        nextView.renderTemplateUrl("main.lynx.bundle", DevClientModule.getProjectInitDataJson(this))
         GeneratedActivityLifecycle.onCreateDelayed(handler)
     }
 

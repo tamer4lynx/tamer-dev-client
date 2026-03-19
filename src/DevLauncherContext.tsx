@@ -1,9 +1,73 @@
-import { createContext, useCallback, useContext, useEffect, useRef, useState } from '@lynx-js/react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from '@lynx-js/react'
 import { devCall, toRequiredModules, type RequiredModule } from './devcall'
+import {
+  normalizeDevServerBase,
+  probeDevServerReachability,
+  probeRecentMetaMatch,
+  validateDevServerUrl,
+} from './devServerUrl'
+import {
+  fetchIconAsDataUrl,
+  getStoredIconDataUrl,
+  rememberIconCacheKey,
+  removeIconCacheKey,
+} from './recentIconCache'
 
-declare const NativeModules: { DevClientModule?: { checkServerCompatibility?: unknown }; JiggleModule?: { vibrate?: (n: number) => void } }
+declare const NativeModules: {
+  DevClientModule?: {
+    getRecentEntries?: (cb: (rows: unknown) => void) => void
+  }
+  JiggleModule?: { vibrate?: (n: number) => void }
+}
 
-export type DiscoveredServer = { url: string; name: string }
+export type DiscoveredServer = {
+  url: string
+  name: string
+  compatible?: boolean
+  iconUrl?: string
+  tamerAppKey?: string
+}
+
+export type RecentEntry = { url: string; tamerAppKey?: string; label?: string; iconUrl?: string }
+
+function normalizeDiscoveredServers(raw: unknown): DiscoveredServer[] {
+  if (!Array.isArray(raw)) return []
+  const out: DiscoveredServer[] = []
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') continue
+    const o = item as Record<string, unknown>
+    const url = o.url != null ? String(o.url) : ''
+    if (!url) continue
+    out.push({
+      url,
+      name: o.name != null ? String(o.name) : '',
+      compatible: typeof o.compatible === 'boolean' ? o.compatible : true,
+      iconUrl: o.iconUrl != null ? String(o.iconUrl) : undefined,
+      tamerAppKey: o.tamerAppKey != null ? String(o.tamerAppKey) : undefined,
+    })
+  }
+  return out
+}
+
+function parseRecentEntries(raw: unknown): RecentEntry[] {
+  if (!Array.isArray(raw)) return []
+  const out: RecentEntry[] = []
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') continue
+    const o = item as Record<string, unknown>
+    const url = o.url != null ? String(o.url) : ''
+    if (!url) continue
+    out.push({
+      url,
+      tamerAppKey: o.tamerAppKey != null ? String(o.tamerAppKey) : undefined,
+      label: o.label != null ? String(o.label) : undefined,
+      iconUrl: o.iconUrl != null ? String(o.iconUrl) : undefined,
+    })
+  }
+  return out
+}
+
+export type RecentReachability = 'checking' | 'matched' | 'mismatch' | 'stale' | 'offline'
 
 export interface DevLauncherTheme {
   primary?: string
@@ -59,13 +123,20 @@ interface DevLauncherContextValue {
   theme: DevLauncherTheme | null
   setTheme: (t: DevLauncherTheme | null) => void
   recentUrls: string[]
+  recentEntries: RecentEntry[]
+  recentReachability: Record<string, RecentReachability>
+  recentRowIconSrc: Record<string, string>
   discoveredServers: DiscoveredServer[]
   incompatibleModalVisible: boolean
   setIncompatibleModalVisible: (v: boolean) => void
   incompatibleModules: RequiredModule[]
+  connectError: string
+  clearConnectError: () => void
   refreshRecent: () => void
+  removeRecentItem: (url: string) => void
   connectToUrl: (parsed: string) => void
   openProject: (rawUrl: string) => void
+  showIncompatibleModalForUrl: (parsed: string) => void
   onSelectRecent: (u: string) => void
   onScanQR: () => void
   parseUrl: (input: string) => string
@@ -79,6 +150,8 @@ export function useDevLauncher() {
   return ctx
 }
 
+export { validateDevServerUrl }
+
 function toRecentArray(r: unknown): string[] {
   if (Array.isArray(r)) return r.filter((x): x is string => typeof x === 'string')
   if (r && typeof r === 'object' && 'length' in r) {
@@ -89,41 +162,87 @@ function toRecentArray(r: unknown): string[] {
 }
 
 export function DevLauncherProvider({ children }: { children: React.ReactNode }) {
-  const [url, setUrl] = useState('')
+  const [url, setUrlState] = useState('')
   const navigateToConnectRef = useRef<(() => void) | null>(null)
   const [theme, setTheme] = useState<DevLauncherTheme | null>(null)
-  const [recentUrls, setRecentUrls] = useState<string[]>([])
+  const [recentEntries, setRecentEntries] = useState<RecentEntry[]>([])
+  const recentUrls = recentEntries.map((e) => e.url)
+  const recentEntriesRef = useRef(recentEntries)
+  recentEntriesRef.current = recentEntries
+  const recentListKey = useMemo(
+    () => recentEntries.map((e) => `${e.url}|${e.iconUrl ?? ''}`).join(';'),
+    [recentEntries]
+  )
+  const [recentReachability, setRecentReachability] = useState<Record<string, RecentReachability>>({})
+  const [recentRowIconSrc, setRecentRowIconSrc] = useState<Record<string, string>>({})
   const [discoveredServers, setDiscoveredServers] = useState<DiscoveredServer[]>([])
   const [incompatibleModalVisible, setIncompatibleModalVisible] = useState(false)
   const [incompatibleModules, setIncompatibleModules] = useState<RequiredModule[]>([])
+  const [connectError, setConnectError] = useState('')
+
+  const setUrl = useCallback((u: string) => {
+    setUrlState(u)
+    setConnectError('')
+  }, [])
+
+  const clearConnectError = useCallback(() => {
+    setConnectError('')
+  }, [])
+
+  const loadRecentFromNative = useCallback(() => {
+    'background only'
+    const mod = NativeModules?.DevClientModule
+    if (mod && typeof mod.getRecentEntries === 'function') {
+      mod.getRecentEntries((rows) => {
+        setRecentEntries(parseRecentEntries(rows))
+      })
+    } else {
+      devCall('getRecentUrls', undefined, (recent) => {
+        setRecentEntries(toRecentArray(recent).map((url) => ({ url })))
+      })
+    }
+  }, [])
 
   useEffect(() => {
     'background only'
     devCall('getDevServerUrl', undefined, (saved) => {
-      if (saved) setUrl(String(saved))
+      if (saved) setUrlState(String(saved))
     })
-    devCall('getRecentUrls', undefined, (recent) => {
-      setRecentUrls(toRecentArray(recent))
-    })
-  }, [])
+    loadRecentFromNative()
+  }, [loadRecentFromNative])
 
   const refreshRecent = useCallback(() => {
     'background only'
-    devCall('getRecentUrls', undefined, (recent) => setRecentUrls(toRecentArray(recent)))
-  }, [])
+    loadRecentFromNative()
+  }, [loadRecentFromNative])
 
-  const parseUrl = useCallback((input: string): string => {
-    let s = input.trim()
-    if (s.startsWith('tamer://')) s = 'http://' + s.replace('tamer://', '')
-    if (!s.startsWith('http://') && !s.startsWith('https://')) s = 'http://' + s
-    s = s.replace(/\/main\.lynx\.bundle\/?$/i, '').replace(/\/+$/, '') || s
-    return s
-  }, [])
+  const removeRecentItem = useCallback(
+    (url: string) => {
+      'background only'
+      const entry = recentEntriesRef.current.find((e) => e.url === url)
+      if (entry?.iconUrl) removeIconCacheKey(entry.iconUrl)
+      devCall('removeRecentUrl', { url })
+      setRecentReachability((prev) => {
+        const next = { ...prev }
+        delete next[url]
+        return next
+      })
+      setRecentRowIconSrc((prev) => {
+        const next = { ...prev }
+        delete next[url]
+        return next
+      })
+      refreshRecent()
+    },
+    [refreshRecent]
+  )
+
+  const parseUrl = useCallback((input: string): string => normalizeDevServerBase(input), [])
 
   const connectToUrl = useCallback(
     (parsed: string) => {
       'background only'
-      if (!(typeof NativeModules !== 'undefined' && NativeModules?.DevClientModule?.checkServerCompatibility)) {
+      if (!(typeof NativeModules !== 'undefined' && NativeModules?.DevClientModule != null)) {
         devCall('setDevServerUrl', { url: parsed })
         refreshRecent()
         NativeModules?.JiggleModule?.vibrate?.(50)
@@ -147,25 +266,125 @@ export function DevLauncherProvider({ children }: { children: React.ReactNode })
     [refreshRecent]
   )
 
+  const showIncompatibleModalForUrl = useCallback((parsed: string) => {
+    'background only'
+    if (!(typeof NativeModules !== 'undefined' && NativeModules?.DevClientModule != null)) return
+    devCall('checkServerCompatibility', { url: parsed }, (compatible: unknown, rawModules: unknown) => {
+      const ok = compatible === true
+      const modules = toRequiredModules(rawModules)
+      if (!ok && modules.length > 0) {
+        setIncompatibleModules(modules)
+        setIncompatibleModalVisible(true)
+      }
+    })
+  }, [])
+
   const openProject = useCallback(
     (rawUrl: string) => {
       'background only'
-      const parsed = parseUrl(rawUrl)
-      if (!parsed) return
-      connectToUrl(parsed)
+      void (async () => {
+        const validated = validateDevServerUrl(rawUrl)
+        if (!validated.ok) {
+          setConnectError(validated.error)
+          return
+        }
+        setConnectError('')
+        const reach = await probeDevServerReachability(validated.parsed)
+        if (reach.kind === 'unreachable') {
+          setConnectError('Server unreachable')
+          return
+        }
+        connectToUrl(validated.parsed)
+      })()
     },
-    [parseUrl, connectToUrl]
+    [connectToUrl]
   )
 
   const onSelectRecent = useCallback((recentUrl: string) => {
     'background only'
-    setUrl(recentUrl)
+    setUrlState(recentUrl)
   }, [])
 
   const onScanQR = useCallback(() => {
     'background only'
     devCall('scanQR')
   }, [])
+
+  const probeAllRecents = useCallback((entries: typeof recentEntries, initial: boolean) => {
+    'background only'
+    if (entries.length === 0) {
+      setRecentReachability({})
+      return () => {}
+    }
+    if (initial) {
+      setRecentReachability(
+        Object.fromEntries(entries.map((e) => [e.url, 'checking' as RecentReachability]))
+      )
+    }
+    let cancelled = false
+    void (async () => {
+      const results = await Promise.all(
+        entries.map(async (e) => {
+          const v = validateDevServerUrl(e.url)
+          if (!v.ok) return [e.url, 'offline' as RecentReachability] as const
+          const st = await probeRecentMetaMatch(v.parsed, e.tamerAppKey)
+          return [e.url, st as RecentReachability] as const
+        })
+      )
+      if (cancelled) return
+      setRecentReachability(Object.fromEntries(results))
+    })()
+    return () => { cancelled = true }
+  }, [])
+
+  useEffect(() => {
+    'background only'
+    const cancel = probeAllRecents(recentEntries, true)
+    const id = setInterval(() => {
+      probeAllRecents(recentEntriesRef.current, false)
+    }, 5000)
+    return () => {
+      cancel()
+      clearInterval(id)
+    }
+  }, [recentListKey, probeAllRecents])
+
+  useEffect(() => {
+    'background only'
+    if (recentEntries.length === 0) {
+      setRecentRowIconSrc({})
+      return
+    }
+    const rowUrls = new Set(recentEntries.map((e) => e.url))
+    setRecentRowIconSrc((prev) => {
+      const next = { ...prev }
+      for (const k of Object.keys(next)) {
+        if (!rowUrls.has(k)) delete next[k]
+      }
+      return next
+    })
+    let cancelled = false
+    void (async () => {
+      await Promise.all(
+        recentEntries.map(async (e) => {
+          if (!e.iconUrl || cancelled) return
+          let src = getStoredIconDataUrl(e.iconUrl)
+          if (!src) {
+            const fetched = await fetchIconAsDataUrl(e.iconUrl)
+            if (fetched) {
+              rememberIconCacheKey(e.iconUrl, fetched)
+              src = fetched
+            }
+          }
+          if (cancelled || !src) return
+          setRecentRowIconSrc((prev) => (prev[e.url] === src ? prev : { ...prev, [e.url]: src }))
+        })
+      )
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [recentListKey])
 
   useEffect(() => {
     'background only'
@@ -179,17 +398,17 @@ export function DevLauncherProvider({ children }: { children: React.ReactNode })
         const raw = scannedUrl ?? ''
         if (!raw) return
         const parsed = parseUrl(raw)
-        setUrl(parsed)
+        setUrlState(parsed)
         navigateToConnectRef.current?.()
         openProject(raw)
-        devCall('getRecentUrls', undefined, (recent) => setRecentUrls(toRecentArray(recent)))
+        loadRecentFromNative()
       } catch {}
     }
     const discoveryHandler = (...args: unknown[]) => {
       const event = args[0] as { payload?: string } | undefined
       try {
         const { servers } = JSON.parse(event?.payload ?? '{}')
-        setDiscoveredServers(Array.isArray(servers) ? servers : [])
+        setDiscoveredServers(normalizeDiscoveredServers(servers))
       } catch {}
     }
     nativeBridge.addListener('devclient:scanResult', scanHandler)
@@ -200,7 +419,7 @@ export function DevLauncherProvider({ children }: { children: React.ReactNode })
       nativeBridge.removeListener?.('devclient:discoveredServers', discoveryHandler)
       devCall('stopDiscovery')
     }
-  }, [openProject, parseUrl])
+  }, [openProject, parseUrl, loadRecentFromNative])
 
   const value: DevLauncherContextValue = {
     url,
@@ -209,13 +428,20 @@ export function DevLauncherProvider({ children }: { children: React.ReactNode })
     theme,
     setTheme,
     recentUrls,
+    recentEntries,
+    recentReachability,
+    recentRowIconSrc,
     discoveredServers,
     incompatibleModalVisible,
     setIncompatibleModalVisible,
     incompatibleModules,
+    connectError,
+    clearConnectError,
     refreshRecent,
+    removeRecentItem,
     connectToUrl,
     openProject,
+    showIncompatibleModalForUrl,
     onSelectRecent,
     onScanQR,
     parseUrl,

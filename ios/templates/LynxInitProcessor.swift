@@ -27,6 +27,9 @@ final class LynxInitProcessor {
 
         // GENERATED AUTOLINK END
 
+        // GENERATED DEV_CLIENT_SUPPORTED START
+        // GENERATED DEV_CLIENT_SUPPORTED END
+
         env.prepareConfig(globalConfig)
     }
 

@@ -17,16 +17,23 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import org.json.JSONObject
 import java.util.concurrent.TimeUnit
 
 private const val SERVICE_TYPE = "_tamer._tcp."
 private const val TAG = "NsdDiscovery"
 
-data class DiscoveredServer(val url: String, val name: String)
+data class DiscoveredServer(
+    val url: String,
+    val name: String,
+    val compatible: Boolean = true,
+    val iconUrl: String? = null,
+    val tamerAppKey: String? = null,
+)
 
 class NsdDiscovery(
     application: Application,
-    private val isCompatible: (String) -> Boolean = { true },
+    private val isCompatible: (String, JSONObject?) -> Boolean = { _, _ -> true },
     private val onServersChanged: (List<DiscoveredServer>) -> Unit
 ) {
     private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
@@ -114,10 +121,25 @@ class NsdDiscovery(
             while (isActive && isDiscovering) {
                 val current = synchronized(potentialServers) { potentialServers.toList() }
                 val alive = current
-                    .map { s -> async { s to (checkStatus(s.url) && isCompatible(s.url)) } }
+                    .map { s ->
+                        async {
+                            if (!checkStatus(s.url)) null
+                            else {
+                                val meta = fetchMeta(s.url)
+                                val displayName =
+                                    meta?.optString("name")?.takeIf { it.isNotBlank() } ?: s.name
+                                DiscoveredServer(
+                                    url = s.url,
+                                    name = displayName,
+                                    compatible = isCompatible(s.url, meta),
+                                    iconUrl = meta?.optString("icon")?.takeIf { it.isNotBlank() },
+                                    tamerAppKey = meta?.optString("tamerAppKey")?.takeIf { it.isNotBlank() },
+                                )
+                            }
+                        }
+                    }
                     .awaitAll()
-                    .filter { (_, ok) -> ok }
-                    .map { (s, _) -> DiscoveredServer(s.url, s.name) }
+                    .filterNotNull()
                 ensureActive()
                 onServersChanged(alive)
                 delay(3000)
@@ -133,6 +155,19 @@ class NsdDiscovery(
             response.isSuccessful && (response.body?.string()?.contains("packager-status:running") == true)
         } catch (_: Exception) {
             false
+        }
+    }
+
+    private fun fetchMeta(url: String): JSONObject? {
+        return try {
+            val metaUrl = url.trimEnd('/') + "/meta.json"
+            val request = Request.Builder().url(metaUrl).build()
+            val response = httpClient.newCall(request).execute()
+            if (!response.isSuccessful) return null
+            val body = response.body?.string() ?: return null
+            JSONObject(body)
+        } catch (_: Exception) {
+            null
         }
     }
 }
