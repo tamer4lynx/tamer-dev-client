@@ -31,14 +31,12 @@ export default function ConnectPage() {
         <text className="DevLauncher__sectionTitle" style={{ color: colors.onSurface }}>Connect to dev server</text>
         <text className="DevLauncher__hint" style={{ color: colors.onSurface }}>Start a local development server with: npx t4l start</text>
         <text className="DevLauncher__hint" style={{ color: colors.onSurface }}>Then, enter the dev server URL when it appears here.</text>
-        <tamer-input
+        <input
           className="DevLauncher__input"
-          style={{ backgroundColor: colors.surfaceContainer }}
-          color={colors.onSurface}
-          placeholder-color={colors.onSurfaceVariant}
+          style={{ backgroundColor: colors.surfaceContainer, color: colors.onSurface }}
           value={url}
           placeholder="http://localhost:3000/example"
-          bindinput={(e: { detail?: { value?: string }; value?: string }) => setUrl(e?.detail?.value ?? e?.value ?? '')}
+          bindinput={(e) => setUrl(e.detail.value)}
         />
         <view className="DevLauncher__buttons">
           <view className="DevLauncher__btn DevLauncher__btn--primary" style={{ backgroundColor: colors.primary, borderColor: colors.surfaceContainer }} bindtap={onConnect}>
