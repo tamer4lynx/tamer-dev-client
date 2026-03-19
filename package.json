@@ -1,7 +1,10 @@
 {
   "name": "@tamer4lynx/tamer-dev-client",
-  "version": "0.0.6",
-  "publishConfig": { "access": "public", "tag": "prerelease" },
+  "version": "0.0.7",
+  "publishConfig": {
+    "access": "public",
+    "tag": "prerelease"
+  },
   "type": "module",
   "description": "Native dev client module for Tamer4Lynx - QR scan, discovery, URL persistence, reload bridge, embedded dev launcher UI",
   "repository": {
@@ -43,5 +46,13 @@
   },
   "author": "Nanofuxion",
   "license": "MIT",
-  "files": ["dist", "android/src", "android/build.gradle.kts", "android/templates", "ios", "lynx.config.ts", "lynx.ext.json"]
+  "files": [
+    "dist",
+    "android/src",
+    "android/build.gradle.kts",
+    "android/templates",
+    "ios",
+    "lynx.config.ts",
+    "lynx.ext.json"
+  ]
 }
