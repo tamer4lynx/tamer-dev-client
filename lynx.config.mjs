@@ -6,9 +6,9 @@ import { pluginTamer } from '@tamer4lynx/tamer-plugin'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
-/** Monorepo workspace aliases. Keep in sync with lynx.config.mjs. `npm run build` uses --config lynx.config.mjs; plain `rspeedy dev` loads this file first if present. */
-const monorepoAliases: Record<string, string> = {}
-const candidates: [string, string][] = [
+/** When building inside the monorepo, point at workspace sources if present. Published installs have no ../ siblings, so aliases stay empty and npm resolution is used. */
+const monorepoAliases = {}
+const candidates = [
   ['@tamer4lynx/tamer-router', '../tamer-router/src/index.ts'],
   ['@tamer4lynx/tamer-system-ui', '../tamer-system-ui/src/index.ts'],
   ['@tamer4lynx/tamer-app-shell', '../tamer-app-shell/src/index.tsx'],

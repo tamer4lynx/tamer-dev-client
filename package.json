@@ -1,6 +1,6 @@
 {
   "name": "@tamer4lynx/tamer-dev-client",
-  "version": "0.0.10",
+  "version": "0.0.13",
   "publishConfig": {
     "access": "public",
     "tag": "prerelease"
@@ -25,7 +25,7 @@
     }
   },
   "scripts": {
-    "build": "rspeedy build",
+    "build": "rspeedy build --config lynx.config.mjs",
     "prepare": "npm run build"
   },
   "peerDependencies": {
@@ -34,10 +34,10 @@
   "dependencies": {
     "react-router": "^6.28.0",
     "@tamer4lynx/tamer-app-shell": "^0.0.2",
-    "@tamer4lynx/tamer-insets": "^0.0.1",
-    "@tamer4lynx/tamer-system-ui": "^0.0.1",
+    "@tamer4lynx/tamer-insets": "^0.0.3",
+    "@tamer4lynx/tamer-system-ui": "^0.0.2",
     "@tamer4lynx/tamer-plugin": "^0.0.1",
-    "@tamer4lynx/tamer-router": "^0.0.1"
+    "@tamer4lynx/tamer-router": "^0.0.2"
   },
   "devDependencies": {
     "@rsbuild/plugin-type-check": "1.2.3",
@@ -52,7 +52,7 @@
     "android/build.gradle.kts",
     "android/templates",
     "ios",
-    "lynx.config.ts",
+    "lynx.config.mjs",
     "lynx.ext.json"
   ]
 }
