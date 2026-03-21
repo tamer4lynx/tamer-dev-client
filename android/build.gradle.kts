@@ -26,15 +26,17 @@ android {
 }
 
 dependencies {
-    implementation("org.lynxsdk.lynx:lynx-service-log:3.3.1")
+    // Must match host app Lynx version (libs.versions.toml); devtool/core mismatch crashes at LynxEnv.init.
+    val lynxSdk = "3.6.0"
+    implementation("org.lynxsdk.lynx:lynx-service-log:$lynxSdk")
     implementation("androidx.activity:activity-ktx:1.8.2")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
-    implementation("org.lynxsdk.lynx:lynx:3.3.1")
-    implementation("org.lynxsdk.lynx:lynx-jssdk:3.3.1")
-    implementation("org.lynxsdk.lynx:lynx-trace:3.3.1")
+    implementation("org.lynxsdk.lynx:lynx:$lynxSdk")
+    implementation("org.lynxsdk.lynx:lynx-jssdk:$lynxSdk")
+    implementation("org.lynxsdk.lynx:lynx-trace:$lynxSdk")
     implementation("com.squareup.okhttp3:okhttp:4.9.0")
     implementation("com.journeyapps:zxing-android-embedded:4.3.0")
     implementation("androidx.appcompat:appcompat:1.6.1")
-    debugImplementation("org.lynxsdk.lynx:lynx-devtool:3.3.1")
-    debugImplementation("org.lynxsdk.lynx:lynx-service-devtool:3.3.1")
+    debugImplementation("org.lynxsdk.lynx:lynx-devtool:$lynxSdk")
+    debugImplementation("org.lynxsdk.lynx:lynx-service-devtool:$lynxSdk")
 }
