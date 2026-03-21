@@ -11,6 +11,10 @@ android {
         minSdk = 28
     }
 
+    buildFeatures {
+        buildConfig = true
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
@@ -31,4 +35,6 @@ dependencies {
     implementation("com.squareup.okhttp3:okhttp:4.9.0")
     implementation("com.journeyapps:zxing-android-embedded:4.3.0")
     implementation("androidx.appcompat:appcompat:1.6.1")
+    debugImplementation("org.lynxsdk.lynx:lynx-devtool:3.3.1")
+    debugImplementation("org.lynxsdk.lynx:lynx-service-devtool:3.3.1")
 }

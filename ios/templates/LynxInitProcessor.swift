@@ -21,6 +21,11 @@ final class LynxInitProcessor {
 
     private func setupLynxEnv() {
         let env = LynxEnv.sharedInstance()
+#if DEBUG
+        env.lynxDebugEnabled = true
+        env.devtoolEnabled = true
+        env.logBoxEnabled = true
+#endif
         let globalConfig = LynxConfig(provider: env.config.templateProvider)
 
         // GENERATED AUTOLINK START

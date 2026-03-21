@@ -22,7 +22,13 @@ The dev client provides:
 - **Reload** — Reload the Lynx bundle
 - **Compatibility check** — Validates native modules between app and project
 
-When building the dev app (`t4l build-dev-app`), the dev client UI is embedded and the Lynx bundle is loaded from the connected dev server.
+When building the dev app (`t4l build … -d`), the dev client UI is embedded and the Lynx bundle is loaded from the connected dev server.
+
+## Lynx DevTool (debug hosts only)
+
+The native Android/iOS pieces register [Lynx DevTool](https://lynxjs.org/guide/devtool.md) when you use a **debug** build of the host (e.g. `t4l build ios -d` / `t4l build android -d`). Connect the [desktop Lynx DevTool](https://lynxjs.org/guide/devtool.md) over USB to inspect elements, debug JS, and use Trace.
+
+**Release / production hosts (`-r`, `-p`)** do not enable DevTool: on iOS, flags are wrapped in `#if DEBUG`; on Android, DevTool artifacts are **debug** variants only and the bootstrap no-ops in release.
 
 ## Dependencies
 
