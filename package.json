@@ -1,6 +1,6 @@
 {
   "name": "@tamer4lynx/tamer-dev-client",
-  "version": "0.0.13",
+  "version": "0.0.16",
   "publishConfig": {
     "access": "public",
     "tag": "prerelease"
@@ -25,8 +25,8 @@
     }
   },
   "scripts": {
-    "build": "rspeedy build --config lynx.config.mjs",
-    "prepare": "npm run build"
+    "build": "node ./scripts/rspeedy-build.mjs",
+    "prepublishOnly": "npm run build"
   },
   "peerDependencies": {
     "@lynx-js/react": ">=0.112.0"
@@ -35,11 +35,14 @@
     "react-router": "^6.28.0",
     "@tamer4lynx/tamer-app-shell": "^0.0.2",
     "@tamer4lynx/tamer-insets": "^0.0.3",
-    "@tamer4lynx/tamer-system-ui": "^0.0.2",
+    "@tamer4lynx/tamer-system-ui": "^0.0.3",
     "@tamer4lynx/tamer-plugin": "^0.0.1",
-    "@tamer4lynx/tamer-router": "^0.0.2"
+    "@tamer4lynx/tamer-router": "^0.0.3"
   },
   "devDependencies": {
+    "@lynx-js/react": ">=0.112.0",
+    "@lynx-js/react-rsbuild-plugin": "^0.12.10",
+    "@lynx-js/rspeedy": "^0.13.5",
     "@rsbuild/plugin-type-check": "1.2.3",
     "@types/react": "^18.3.23",
     "typescript": "~5.8.3"
