@@ -1,6 +1,6 @@
 {
   "name": "@tamer4lynx/tamer-dev-client",
-  "version": "0.0.18",
+  "version": "0.0.19",
   "publishConfig": {
     "access": "public",
     "tag": "prerelease"
