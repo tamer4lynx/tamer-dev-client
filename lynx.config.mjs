@@ -2,9 +2,16 @@ import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import fs from 'node:fs'
 import { pluginReactLynx } from '@lynx-js/react-rsbuild-plugin'
+import { tamerRouterPlugin } from '@tamer4lynx/tamer-router/plugin'
 import { pluginTamer } from '@tamer4lynx/tamer-plugin'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
+
+const tamerRouter = tamerRouterPlugin({
+  root: './src/pages',
+  output: 'src/generated-routes.tsx',
+  layoutFilename: '_layout.tsx',
+})
 
 /** When building inside the monorepo, point at workspace sources if present. Published installs have no ../ siblings, so aliases stay empty and npm resolution is used. */
 const monorepoAliases = {}
@@ -28,5 +35,5 @@ export default {
   resolve: {
     alias: monorepoAliases,
   },
-  plugins: [pluginTamer(), pluginReactLynx()],
+  plugins: [pluginTamer({ tamerRouter }), pluginReactLynx()],
 }
