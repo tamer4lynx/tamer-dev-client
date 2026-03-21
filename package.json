@@ -1,6 +1,6 @@
 {
   "name": "@tamer4lynx/tamer-dev-client",
-  "version": "0.0.17",
+  "version": "0.0.18",
   "publishConfig": {
     "access": "public",
     "tag": "prerelease"
@@ -51,6 +51,7 @@
   "license": "MIT",
   "files": [
     "dist",
+    "scripts",
     "android/src",
     "android/build.gradle.kts",
     "android/templates",
