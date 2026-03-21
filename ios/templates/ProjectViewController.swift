@@ -16,7 +16,9 @@ class ProjectViewController: UIViewController {
         additionalSafeAreaInsets = .zero
         view.insetsLayoutMarginsFromSafeArea = false
         view.preservesSuperviewLayoutMargins = false
-        viewRespectsSystemMinimumLayoutMargins = false
+        if #available(iOS 15.0, *) {
+            viewRespectsSystemMinimumLayoutMargins = false
+        }
         setupLynxView()
         TamerRelogLogService.connect()
         devClientManager = DevClientManager(onReload: { [weak self] in
