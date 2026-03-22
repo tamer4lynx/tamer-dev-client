@@ -1,6 +1,6 @@
 {
   "name": "@tamer4lynx/tamer-dev-client",
-  "version": "0.0.22",
+  "version": "0.0.23",
   "publishConfig": {
     "access": "public",
     "tag": "prerelease"
@@ -32,7 +32,7 @@
     "@lynx-js/react": ">=0.112.0"
   },
   "dependencies": {
-    "@tamer4lynx/tamer-app-shell": "^0.0.2",
+    "@tamer4lynx/tamer-app-shell": "^0.0.3",
     "@tamer4lynx/tamer-insets": "^0.0.3",
     "@tamer4lynx/tamer-system-ui": "^0.0.3",
     "@tamer4lynx/tamer-plugin": "^0.0.3",

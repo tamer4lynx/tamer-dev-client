@@ -5,12 +5,23 @@ class DevClientManager {
     private var webSocketTask: URLSessionWebSocketTask?
     private let onReload: () -> Void
     private var session: URLSession?
+    private var shouldReconnect = false
+    private var reconnectWorkItem: DispatchWorkItem?
+
+    private let reconnectDelay: TimeInterval = 3.0
 
     init(onReload: @escaping () -> Void) {
         self.onReload = onReload
     }
 
     func connect() {
+        shouldReconnect = true
+        openSocketIfNeeded()
+    }
+
+    private func openSocketIfNeeded() {
+        guard shouldReconnect else { return }
+        guard webSocketTask == nil else { return }
         guard let devUrl = DevServerPrefs.getUrl(), !devUrl.isEmpty else { return }
         guard let base = URL(string: devUrl) else { return }
 
@@ -38,14 +49,31 @@ class DevClientManager {
                 }
                 self.receive()
             case .failure:
-                break
+                self.handleDisconnect()
             }
         }
     }
 
-    func disconnect() {
-        webSocketTask?.cancel(with: .normalClosure, reason: nil)
+    private func handleDisconnect() {
         webSocketTask = nil
+        session?.invalidateAndCancel()
+        session = nil
+        guard shouldReconnect else { return }
+        reconnectWorkItem?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            self?.openSocketIfNeeded()
+        }
+        reconnectWorkItem = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + reconnectDelay, execute: work)
+    }
+
+    func disconnect() {
+        shouldReconnect = false
+        reconnectWorkItem?.cancel()
+        reconnectWorkItem = nil
+        webSocketTask?.cancel(with: .goingAway, reason: nil)
+        webSocketTask = nil
+        session?.invalidateAndCancel()
         session = nil
     }
 }

@@ -22,7 +22,7 @@ The dev client provides:
 - **Reload** — Reload the Lynx bundle
 - **Compatibility check** — Validates native modules between app and project
 
-When building the dev app (`t4l build … -d`), the dev client UI is embedded and the Lynx bundle is loaded from the connected dev server.
+When building the dev app (`t4l build ios -d` / `t4l build android -d`), the dev client UI is embedded and the Lynx bundle is loaded from the connected dev server.
 
 ## Lynx DevTool (debug hosts only)
 
