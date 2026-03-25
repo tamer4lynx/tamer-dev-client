@@ -1,6 +1,6 @@
 {
   "name": "@tamer4lynx/tamer-dev-client",
-  "version": "0.0.24",
+  "version": "0.0.26",
   "publishConfig": {
     "access": "public",
     "tag": "prerelease"
@@ -36,7 +36,7 @@
     "@tamer4lynx/tamer-insets": "^0.0.3",
     "@tamer4lynx/tamer-system-ui": "^0.0.3",
     "@tamer4lynx/tamer-plugin": "^0.0.3",
-    "@tamer4lynx/tamer-router": "^0.0.3"
+    "@tamer4lynx/tamer-router": "^0.0.7"
   },
   "devDependencies": {
     "@lynx-js/react": ">=0.112.0",
