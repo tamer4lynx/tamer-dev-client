@@ -36,7 +36,10 @@ export default function ConnectPage() {
           style={{ backgroundColor: colors.surfaceContainer, color: colors.onSurface }}
           value={url}
           placeholder="http://localhost:3000/example"
-          bindinput={(e) => setUrl(e.detail.value)}
+          bindinput={(e) => {
+            'background only'
+            setUrl(e.detail.value)
+          }}
         />
         {connectError ? (
           <text className="DevLauncher__hint" style={{ color: '#ef4444', marginBottom: '12px' }}>{connectError}</text>
@@ -50,12 +53,24 @@ export default function ConnectPage() {
             <text className="DevLauncher__btnText" style={{ color: colors.onSurface }}>Scan QR code</text>
           </view>
         </view>
-        {/* <text style={{ fontSize: '20rpx', color: colors.onSurface, marginTop: '24rpx' }}>
-          {theme == null ? 'theme: null (fallback)' : 'theme: live'}
+        <text style={{ fontSize: '20rpx', color: colors.onSurface, marginTop: '24rpx' }}>
+          {theme == null ? 'theme: null (fallback)' : 'theme: live'} · isDark: {String(colors.isDark)}
         </text>
-        <text style={{ fontSize: '18rpx', color: colors.onSurface }}>{debugRaw}</text>
+        {/* <text style={{ fontSize: '18rpx', color: colors.onSurface }}>{debugRaw}</text>
         <view style={{ display: 'flex', flexDirection: 'row', flexWrap: 'wrap', gap: '8rpx', marginTop: '8rpx', alignItems: 'flex-start' }}>
-          {(['surface', 'surfaceContainer', 'primary', 'primaryDark', 'background', 'onSurface'] as const).map((key) => (
+          {(
+            [
+              'surface',
+              'surfaceContainer',
+              'primary',
+              'primaryDark',
+              'background',
+              'onSurface',
+              'onSurfaceVariant',
+              'secondaryContainer',
+              'onSecondaryContainer',
+            ] as const
+          ).map((key) => (
             <view key={key} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4rpx' }}>
               <view style={{ width: '48rpx', height: '48rpx', borderRadius: '8rpx', backgroundColor: colors[key], borderWidth: '1rpx', borderColor: colors.onSurface }} />
               <text style={{ fontSize: '18rpx', color: colors.onSurface }}>{key}</text>

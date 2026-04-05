@@ -1,5 +1,6 @@
 import { useEffect } from '@lynx-js/react'
-import { Tabs, useLocation, useTamerNavigate } from '@tamer4lynx/tamer-router'
+import { useLocation } from '@tamer4lynx/tamer-router'
+import { Tabs, useTamerNavigate } from '@tamer4lynx/tamer-router'
 import { useSystemUI, useThemeColors } from '@tamer4lynx/tamer-system-ui'
 import { useDevLauncher, resolveTheme } from '../DevLauncherContext'
 
@@ -29,6 +30,7 @@ export default function Layout() {
   } = useDevLauncher()
 
   useEffect(() => {
+    'background only'
     navigateToConnectRef.current = () => replace('/')
     return () => {
       navigateToConnectRef.current = null
@@ -36,11 +38,13 @@ export default function Layout() {
   }, [replace, navigateToConnectRef])
 
   useEffect(() => {
+    'background only'
     setStatusBar({ color: colors.surface, style: colors.isDark ? 'light' : 'dark' })
     setNavigationBar({ color: colors.surfaceContainer ?? '#000000', style: colors.isDark ? 'light' : 'dark' })
   }, [colors.surface, colors.surfaceContainer, colors.isDark, setStatusBar, setNavigationBar])
 
   useEffect(() => {
+    'background only'
     setTheme(osTheme ?? null)
   }, [osTheme, setTheme])
 
@@ -51,8 +55,21 @@ export default function Layout() {
   return (
     <>
       {incompatibleModalVisible && (
-        <view className="DevLauncher__modalOverlay" style={{ backgroundColor: 'rgba(0,0,0,0.6)' }} bindtap={() => setIncompatibleModalVisible(false)}>
-          <view className="DevLauncher__modal" style={{ backgroundColor: colors.surfaceContainer, borderColor: colors.surfaceContainer }} catchtap={() => {}}>
+        <view
+          className="DevLauncher__modalOverlay"
+          style={{ backgroundColor: 'rgba(0,0,0,0.6)' }}
+          bindtap={() => {
+            'background only'
+            setIncompatibleModalVisible(false)
+          }}
+        >
+          <view
+            className="DevLauncher__modal"
+            style={{ backgroundColor: colors.surfaceContainer, borderColor: colors.surfaceContainer }}
+            catchtap={() => {
+              'background only'
+            }}
+          >
             <text className="DevLauncher__modalTitle" style={{ color: colors.onSurface }}>Incompatible server</text>
             <text className="DevLauncher__modalText" style={{ color: colors.onSurface }}>This app is missing native modules required by the project:</text>
             <view className="DevLauncher__modalList">
@@ -62,7 +79,14 @@ export default function Layout() {
                 </text>
               ))}
             </view>
-            <view className="DevLauncher__btn DevLauncher__btn--primary" style={{ backgroundColor: colors.primary, borderColor: colors.surfaceContainer }} bindtap={() => setIncompatibleModalVisible(false)}>
+            <view
+              className="DevLauncher__btn DevLauncher__btn--primary"
+              style={{ backgroundColor: colors.primary, borderColor: colors.surfaceContainer }}
+              bindtap={() => {
+                'background only'
+                setIncompatibleModalVisible(false)
+              }}
+            >
               <text className="DevLauncher__btnText" style={{ color: colors.onSurface }}>OK</text>
             </view>
           </view>
@@ -75,7 +99,6 @@ export default function Layout() {
           headerForegroundColor: colors.onSurface ?? '#ffffff',
           tabBarStyle,
           contentStyle,
-          iconColor: { active: colors.onSurface ?? '#ffffff', inactive: '#888888' },
         }}
       >
         <Tabs.Screen name="index" path="/" options={{ title: 'Connect', icon: 'link', label: 'Connect' }} />

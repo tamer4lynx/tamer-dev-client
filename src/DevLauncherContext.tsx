@@ -77,6 +77,8 @@ export interface DevLauncherTheme {
   surfaceContainer?: string
   onSurface?: string
   onSurfaceVariant?: string
+  secondaryContainer?: string
+  onSecondaryContainer?: string
   isDark?: boolean
 }
 
@@ -88,6 +90,8 @@ export const FALLBACK_THEME: DevLauncherTheme = {
   background: '#121212',
   onSurface: '#ffffff',
   onSurfaceVariant: '#b0b0b0',
+  secondaryContainer: '#1a3538',
+  onSecondaryContainer: '#80cbc4',
   isDark: true,
 }
 
@@ -99,6 +103,8 @@ export const LIGHT_FALLBACK: DevLauncherTheme = {
   background: '#ffffff',
   onSurface: '#000000',
   onSurfaceVariant: '#6b6b6b',
+  secondaryContainer: '#cce8e5',
+  onSecondaryContainer: '#005f5a',
   isDark: false,
 }
 
@@ -112,6 +118,8 @@ export function resolveTheme(theme: DevLauncherTheme | null | undefined): DevLau
     background: theme.background ?? FALLBACK_THEME.background,
     onSurface: theme.onSurface ?? FALLBACK_THEME.onSurface,
     onSurfaceVariant: theme.onSurfaceVariant ?? FALLBACK_THEME.onSurfaceVariant,
+    secondaryContainer: theme.secondaryContainer ?? FALLBACK_THEME.secondaryContainer,
+    onSecondaryContainer: theme.onSecondaryContainer ?? FALLBACK_THEME.onSecondaryContainer,
     isDark: theme.isDark ?? FALLBACK_THEME.isDark,
   }
 }
@@ -181,11 +189,13 @@ export function DevLauncherProvider({ children }: { children: React.ReactNode })
   const [connectError, setConnectError] = useState('')
 
   const setUrl = useCallback((u: string) => {
+    'background only'
     setUrlState(u)
     setConnectError('')
   }, [])
 
   const clearConnectError = useCallback(() => {
+    'background only'
     setConnectError('')
   }, [])
 
