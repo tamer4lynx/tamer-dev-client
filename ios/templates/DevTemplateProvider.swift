@@ -4,9 +4,14 @@ import tamerdevclient
 
 class DevTemplateProvider: NSObject, LynxTemplateProvider {
     private static let devClientBundle = "dev-client.lynx.bundle"
+    private static let tamerDebugBundle = "tamer-debug.lynx.bundle"
 
     func loadTemplate(withUrl url: String!, onComplete callback: LynxTemplateLoadBlock!) {
         DispatchQueue.global(qos: .background).async {
+            if url == Self.tamerDebugBundle || url?.hasSuffix("/" + Self.tamerDebugBundle) == true {
+                self.loadFromBundle(url: Self.tamerDebugBundle, callback: callback)
+                return
+            }
             if url == Self.devClientBundle || url?.hasSuffix("/" + Self.devClientBundle) == true {
                 self.loadFromBundle(url: Self.devClientBundle, callback: callback)
                 return

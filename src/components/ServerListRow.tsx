@@ -1,4 +1,5 @@
 import { useCallback } from '@lynx-js/react'
+import { Card } from '@tamer4lynx/tamer-app-shell'
 
 export type ServerListRowProps = {
   dotClass: string
@@ -6,11 +7,13 @@ export type ServerListRowProps = {
   title: string
   subtitle?: string
   surfaceColor: string
-  borderColor: string
+  /** Unused; kept for call-site compatibility. */
+  borderColor?: string
   titleColor: string
   subtitleColor: string
-  itemClassName?: string
-  /** When true, no bindtap — parent handles press (e.g. swipe row). */
+  /** When true, render only row content (parent supplies surface, e.g. Card in swipe row). */
+  embedded?: boolean
+  /** When true, no tap — parent handles press (e.g. swipe row). */
   disableTap?: boolean
   onPress: () => void
 }
@@ -22,10 +25,9 @@ export default function ServerListRow(props: ServerListRowProps) {
     title,
     subtitle,
     surfaceColor,
-    borderColor,
     titleColor,
     subtitleColor,
-    itemClassName = 'DevLauncher__recentItem',
+    embedded = false,
     disableTap = false,
     onPress,
   } = props
@@ -56,21 +58,23 @@ export default function ServerListRow(props: ServerListRowProps) {
     </view>
   )
 
-  if (disableTap) {
-    return (
-      <view className={itemClassName} style={{ backgroundColor: surfaceColor, borderColor }}>
-        {rowChildren}
-      </view>
-    )
+  if (embedded) {
+    return rowChildren
   }
 
   return (
-    <view
-      className={itemClassName}
-      style={{ backgroundColor: surfaceColor, borderColor }}
-      bindtap={handleTap}
+    <Card
+      variant="elevated"
+      colors={{ container: surfaceColor }}
+      onTap={disableTap ? undefined : handleTap}
+      style={{
+        width: '100%',
+        minWidth: 0,
+        padding: '14px 16px',
+        boxSizing: 'border-box',
+      }}
     >
       {rowChildren}
-    </view>
+    </Card>
   )
 }

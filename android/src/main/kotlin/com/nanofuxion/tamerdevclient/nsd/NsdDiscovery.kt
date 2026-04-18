@@ -150,7 +150,10 @@ class NsdDiscovery(
     private fun checkStatus(url: String): Boolean {
         return try {
             val statusUrl = url.trimEnd('/') + "/status"
-            val request = Request.Builder().url(statusUrl).build()
+            val request = Request.Builder()
+                .url(statusUrl)
+                .header("x-tamer-probe", "discovery-status")
+                .build()
             val response = httpClient.newCall(request).execute()
             response.isSuccessful && (response.body?.string()?.contains("packager-status:running") == true)
         } catch (_: Exception) {
@@ -161,7 +164,10 @@ class NsdDiscovery(
     private fun fetchMeta(url: String): JSONObject? {
         return try {
             val metaUrl = url.trimEnd('/') + "/meta.json"
-            val request = Request.Builder().url(metaUrl).build()
+            val request = Request.Builder()
+                .url(metaUrl)
+                .header("x-tamer-probe", "discovery-meta")
+                .build()
             val response = httpClient.newCall(request).execute()
             if (!response.isSuccessful) return null
             val body = response.body?.string() ?: return null

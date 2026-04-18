@@ -7,6 +7,8 @@ declare module '@lynx-js/react/jsx-runtime' {
         placeholder?: string
         value?: string
         type?: 'text' | 'number' | 'digit' | 'password' | 'tel' | 'email'
+        'ios-auto-correct'?: boolean
+        'ios-spell-check'?: boolean
         maxlength?: number
         readonly?: boolean
         disabled?: boolean

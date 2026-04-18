@@ -1,3 +1,12 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.VIBRATE" />
+    <uses-permission android:name="android.permission.HIGH_SAMPLING_RATE_SENSORS" />
+
+    <application>
+        <activity
+            android:name="com.nanofuxion.tamerdevclient.DebugPanelActivity"
+            android:theme="@style/TamerDebugPanelTheme"
+            android:exported="false" />
+    </application>
 </manifest>

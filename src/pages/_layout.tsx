@@ -1,13 +1,13 @@
-import { useEffect } from '@lynx-js/react'
-import { useLocation } from '@tamer4lynx/tamer-router'
+import { useCallback, useEffect } from '@lynx-js/react'
+import { Button } from '@tamer4lynx/tamer-app-shell'
 import { Tabs, useTamerNavigate } from '@tamer4lynx/tamer-router'
 import { useSystemUI, useThemeColors } from '@tamer4lynx/tamer-system-ui'
 import { useDevLauncher, resolveTheme } from '../DevLauncherContext'
+import { setLauncherSystemTheme } from '../launcherThemeState'
 
 const ROUTE_TITLES: Record<string, string> = {
   '/': 'Connect',
-  '/recent': 'Recent',
-  '/discover': 'Discover',
+  '/about': 'About',
 }
 
 function titleForPath(pathname: string): string {
@@ -16,7 +16,6 @@ function titleForPath(pathname: string): string {
 }
 
 export default function Layout() {
-  const location = useLocation()
   const { replace } = useTamerNavigate()
   const { setStatusBar, setNavigationBar } = useSystemUI()
   const osTheme = useThemeColors()
@@ -25,7 +24,6 @@ export default function Layout() {
     incompatibleModalVisible,
     setIncompatibleModalVisible,
     incompatibleModules,
-    setTheme,
     navigateToConnectRef,
   } = useDevLauncher()
 
@@ -45,8 +43,13 @@ export default function Layout() {
 
   useEffect(() => {
     'background only'
-    setTheme(osTheme ?? null)
-  }, [osTheme, setTheme])
+    setLauncherSystemTheme(osTheme ?? null)
+  }, [osTheme])
+
+  const onDismissIncompatibleModal = useCallback(() => {
+    'background only'
+    setIncompatibleModalVisible(false)
+  }, [setIncompatibleModalVisible])
 
   const barStyle = { backgroundColor: colors.surfaceContainer ?? '#1e1e1e', borderBottomColor: colors.surfaceContainer ?? '#333333' }
   const contentStyle = { backgroundColor: colors.surface }
@@ -79,16 +82,13 @@ export default function Layout() {
                 </text>
               ))}
             </view>
-            <view
-              className="DevLauncher__btn DevLauncher__btn--primary"
-              style={{ backgroundColor: colors.primary, borderColor: colors.surfaceContainer }}
-              bindtap={() => {
-                'background only'
-                setIncompatibleModalVisible(false)
-              }}
-            >
-              <text className="DevLauncher__btnText" style={{ color: colors.onSurface }}>OK</text>
-            </view>
+            <Button
+              label="OK"
+              variant="filled"
+              onTap={onDismissIncompatibleModal}
+              style={{ width: '100%' }}
+              colors={{ container: colors.primary }}
+            />
           </view>
         </view>
       )}
@@ -102,8 +102,7 @@ export default function Layout() {
         }}
       >
         <Tabs.Screen name="index" path="/" options={{ title: 'Connect', icon: 'link', label: 'Connect' }} />
-        <Tabs.Screen name="recent" path="/recent" options={{ title: 'Recent', icon: 'history', label: 'Recent' }} />
-        <Tabs.Screen name="discover" path="/discover" options={{ title: 'Discover', icon: 'wifi_find', label: 'Discover' }} />
+        <Tabs.Screen name="about" path="/about" options={{ title: 'About', icon: 'info', label: 'About' }} />
       </Tabs>
     </>
   )

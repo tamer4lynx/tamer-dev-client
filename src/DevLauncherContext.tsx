@@ -12,6 +12,14 @@ import {
   rememberIconCacheKey,
   removeIconCacheKey,
 } from './recentIconCache'
+import {
+  type DevLauncherTheme,
+} from './devLauncherTheme.js'
+import {
+  subscribeLauncherThemeState,
+} from './launcherThemeState.js'
+import { serverIdentityKey } from './serverIdentity'
+export * from './devLauncherTheme.js'
 
 declare const NativeModules: {
   DevClientModule?: {
@@ -30,23 +38,69 @@ export type DiscoveredServer = {
 
 export type RecentEntry = { url: string; tamerAppKey?: string; label?: string; iconUrl?: string }
 
+function pickPreferredRecentEntry(current: RecentEntry, next: RecentEntry): RecentEntry {
+  return {
+    url: current.url,
+    tamerAppKey: current.tamerAppKey ?? next.tamerAppKey,
+    label: current.label ?? next.label,
+    iconUrl: current.iconUrl ?? next.iconUrl,
+  }
+}
+
+function pickPreferredDiscoveredServer(current: DiscoveredServer, next: DiscoveredServer): DiscoveredServer {
+  const currentName = current.name.trim()
+  const nextName = next.name.trim()
+  return {
+    url: current.url,
+    name: currentName || nextName,
+    compatible: current.compatible === false || next.compatible === false ? false : true,
+    iconUrl: current.iconUrl ?? next.iconUrl,
+    tamerAppKey: current.tamerAppKey ?? next.tamerAppKey,
+  }
+}
+
+function dedupeRecentEntries(entries: RecentEntry[]): RecentEntry[] {
+  const byKey = new Map<string, RecentEntry>()
+  const orderedKeys: string[] = []
+  for (const entry of entries) {
+    const key = serverIdentityKey(entry)
+    const existing = byKey.get(key)
+    if (!existing) {
+      byKey.set(key, entry)
+      orderedKeys.push(key)
+      continue
+    }
+    byKey.set(key, pickPreferredRecentEntry(existing, entry))
+  }
+  return orderedKeys.map((key) => byKey.get(key)!)
+}
+
 function normalizeDiscoveredServers(raw: unknown): DiscoveredServer[] {
   if (!Array.isArray(raw)) return []
-  const out: DiscoveredServer[] = []
+  const byKey = new Map<string, DiscoveredServer>()
+  const orderedKeys: string[] = []
   for (const item of raw) {
     if (!item || typeof item !== 'object') continue
     const o = item as Record<string, unknown>
     const url = o.url != null ? String(o.url) : ''
     if (!url) continue
-    out.push({
+    const next: DiscoveredServer = {
       url,
       name: o.name != null ? String(o.name) : '',
       compatible: typeof o.compatible === 'boolean' ? o.compatible : true,
       iconUrl: o.iconUrl != null ? String(o.iconUrl) : undefined,
       tamerAppKey: o.tamerAppKey != null ? String(o.tamerAppKey) : undefined,
-    })
+    }
+    const key = serverIdentityKey(next)
+    const existing = byKey.get(key)
+    if (!existing) {
+      byKey.set(key, next)
+      orderedKeys.push(key)
+      continue
+    }
+    byKey.set(key, pickPreferredDiscoveredServer(existing, next))
   }
-  return out
+  return orderedKeys.map((key) => byKey.get(key)!)
 }
 
 function parseRecentEntries(raw: unknown): RecentEntry[] {
@@ -64,65 +118,10 @@ function parseRecentEntries(raw: unknown): RecentEntry[] {
       iconUrl: o.iconUrl != null ? String(o.iconUrl) : undefined,
     })
   }
-  return out
+  return dedupeRecentEntries(out)
 }
 
 export type RecentReachability = 'checking' | 'matched' | 'mismatch' | 'stale' | 'offline'
-
-export interface DevLauncherTheme {
-  primary?: string
-  primaryDark?: string
-  background?: string
-  surface?: string
-  surfaceContainer?: string
-  onSurface?: string
-  onSurfaceVariant?: string
-  secondaryContainer?: string
-  onSecondaryContainer?: string
-  isDark?: boolean
-}
-
-export const FALLBACK_THEME: DevLauncherTheme = {
-  surface: '#121212',
-  surfaceContainer: '#1e1e1e',
-  primary: '#000000',
-  primaryDark: '#000000',
-  background: '#121212',
-  onSurface: '#ffffff',
-  onSurfaceVariant: '#b0b0b0',
-  secondaryContainer: '#1a3538',
-  onSecondaryContainer: '#80cbc4',
-  isDark: true,
-}
-
-export const LIGHT_FALLBACK: DevLauncherTheme = {
-  surface: '#f5f5f5',
-  surfaceContainer: '#e8e8e8',
-  primary: '#007aff',
-  primaryDark: '#0051d5',
-  background: '#ffffff',
-  onSurface: '#000000',
-  onSurfaceVariant: '#6b6b6b',
-  secondaryContainer: '#cce8e5',
-  onSecondaryContainer: '#005f5a',
-  isDark: false,
-}
-
-export function resolveTheme(theme: DevLauncherTheme | null | undefined): DevLauncherTheme {
-  if (theme == null) return LIGHT_FALLBACK
-  return {
-    surface: theme.surface ?? FALLBACK_THEME.surface,
-    surfaceContainer: theme.surfaceContainer ?? FALLBACK_THEME.surfaceContainer,
-    primary: theme.primary ?? FALLBACK_THEME.primary,
-    primaryDark: theme.primaryDark ?? FALLBACK_THEME.primaryDark,
-    background: theme.background ?? FALLBACK_THEME.background,
-    onSurface: theme.onSurface ?? FALLBACK_THEME.onSurface,
-    onSurfaceVariant: theme.onSurfaceVariant ?? FALLBACK_THEME.onSurfaceVariant,
-    secondaryContainer: theme.secondaryContainer ?? FALLBACK_THEME.secondaryContainer,
-    onSecondaryContainer: theme.onSecondaryContainer ?? FALLBACK_THEME.onSecondaryContainer,
-    isDark: theme.isDark ?? FALLBACK_THEME.isDark,
-  }
-}
 
 interface DevLauncherContextValue {
   url: string
@@ -144,6 +143,7 @@ interface DevLauncherContextValue {
   removeRecentItem: (url: string) => void
   connectToUrl: (parsed: string) => void
   openProject: (rawUrl: string) => void
+  openProjectDirectly: (bundleUrl: string) => void
   showIncompatibleModalForUrl: (parsed: string) => void
   onSelectRecent: (u: string) => void
   onScanQR: () => void
@@ -215,11 +215,15 @@ export function DevLauncherProvider({ children }: { children: React.ReactNode })
 
   useEffect(() => {
     'background only'
-    devCall('getDevServerUrl', undefined, (saved) => {
-      if (saved) setUrlState(String(saved))
-    })
     loadRecentFromNative()
   }, [loadRecentFromNative])
+
+  useEffect(() => {
+    'background only'
+    return subscribeLauncherThemeState((nextTheme) => {
+      setTheme(nextTheme)
+    })
+  }, [])
 
   const refreshRecent = useCallback(() => {
     'background only'
@@ -304,6 +308,10 @@ export function DevLauncherProvider({ children }: { children: React.ReactNode })
           setConnectError('Server unreachable')
           return
         }
+        if (reach.kind === 'reachable_no_meta') {
+          setConnectError('Server is reachable, but it is not serving Tamer meta.json')
+          return
+        }
         connectToUrl(validated.parsed)
       })()
     },
@@ -313,6 +321,11 @@ export function DevLauncherProvider({ children }: { children: React.ReactNode })
   const onSelectRecent = useCallback((recentUrl: string) => {
     'background only'
     setUrlState(recentUrl)
+  }, [])
+
+  const openProjectDirectly = useCallback((bundleUrl: string) => {
+    'background only'
+    devCall('openProjectDirect', { url: bundleUrl })
   }, [])
 
   const onScanQR = useCallback(() => {
@@ -399,8 +412,9 @@ export function DevLauncherProvider({ children }: { children: React.ReactNode })
   useEffect(() => {
     'background only'
     if (!(typeof NativeModules !== 'undefined' && NativeModules?.DevClientModule)) return
+
     const nativeBridge = lynx?.getJSModule?.('GlobalEventEmitter')
-    if (!nativeBridge?.addListener) return
+
     const scanHandler = (...args: unknown[]) => {
       const event = args[0] as { payload?: string } | undefined
       try {
@@ -408,12 +422,12 @@ export function DevLauncherProvider({ children }: { children: React.ReactNode })
         const raw = scannedUrl ?? ''
         if (!raw) return
         const parsed = parseUrl(raw)
-        setUrlState(parsed)
-        navigateToConnectRef.current?.()
-        openProject(raw)
-        loadRecentFromNative()
+        // Directly open the project with the scanned URL
+        // This bypasses the dev launcher and goes directly to ProjectActivity/ViewController
+        openProjectDirectly(parsed)
       } catch {}
     }
+
     const discoveryHandler = (...args: unknown[]) => {
       const event = args[0] as { payload?: string } | undefined
       try {
@@ -421,12 +435,37 @@ export function DevLauncherProvider({ children }: { children: React.ReactNode })
         setDiscoveredServers(normalizeDiscoveredServers(servers))
       } catch {}
     }
-    nativeBridge.addListener('devclient:scanResult', scanHandler)
-    nativeBridge.addListener('devclient:discoveredServers', discoveryHandler)
+
+    const discoveredArrayFromNative = (raw: unknown): unknown[] => {
+      if (Array.isArray(raw)) return raw
+      if (raw && typeof raw === 'object' && 'length' in raw) {
+        const arr = raw as { length: number; [i: number]: unknown }
+        return Array.from({ length: arr.length }, (_, i) => arr[i])
+      }
+      return []
+    }
+
+    const pollDiscovered = () => {
+      devCall('getDiscoveredServers', undefined, (raw) => {
+        setDiscoveredServers(normalizeDiscoveredServers(discoveredArrayFromNative(raw)))
+      })
+    }
+
+    if (nativeBridge?.addListener) {
+      nativeBridge.addListener('devclient:scanResult', scanHandler)
+      nativeBridge.addListener('devclient:discoveredServers', discoveryHandler)
+    }
+
     devCall('startDiscovery')
+    pollDiscovered()
+    const pollId = setInterval(pollDiscovered, 2000)
+
     return () => {
-      nativeBridge.removeListener?.('devclient:scanResult', scanHandler)
-      nativeBridge.removeListener?.('devclient:discoveredServers', discoveryHandler)
+      clearInterval(pollId)
+      if (nativeBridge?.removeListener) {
+        nativeBridge.removeListener?.('devclient:scanResult', scanHandler)
+        nativeBridge.removeListener?.('devclient:discoveredServers', discoveryHandler)
+      }
       devCall('stopDiscovery')
     }
   }, [openProject, parseUrl, loadRecentFromNative])
@@ -451,11 +490,16 @@ export function DevLauncherProvider({ children }: { children: React.ReactNode })
     removeRecentItem,
     connectToUrl,
     openProject,
+    openProjectDirectly,
     showIncompatibleModalForUrl,
     onSelectRecent,
     onScanQR,
     parseUrl,
   }
 
-  return <DevLauncherContext.Provider value={value}>{children}</DevLauncherContext.Provider>
+  return (
+    <DevLauncherContext.Provider value={value}>
+      {children}
+    </DevLauncherContext.Provider>
+  )
 }

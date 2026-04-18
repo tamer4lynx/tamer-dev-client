@@ -30,7 +30,11 @@ for (const [pkg, rel] of candidates) {
 
 export default {
   source: {
-    entry: { 'dev-client': './src/index.tsx' },
+    entry: {
+      'dev-client': './src/index.tsx',
+      /** Minimal shell for native debug dialog / overlay (no router, no dev launcher chrome). */
+      'tamer-debug': './src/tamer-debug-panel.tsx',
+    },
   },
   resolve: {
     alias: monorepoAliases,

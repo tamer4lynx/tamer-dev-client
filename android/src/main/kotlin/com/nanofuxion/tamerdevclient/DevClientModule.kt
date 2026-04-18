@@ -1,8 +1,14 @@
 package com.nanofuxion.tamerdevclient
 
+import android.annotation.SuppressLint
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
+import android.hardware.SensorManager
+import android.os.Build
+import android.os.VibrationEffect
+import android.os.Vibrator
+import android.os.VibratorManager
 import android.util.Log
 import androidx.core.content.ContextCompat
 import com.google.zxing.integration.android.IntentIntegrator
@@ -11,8 +17,10 @@ import com.lynx.jsbridge.LynxModule
 import com.lynx.react.bridge.Callback
 import com.lynx.react.bridge.JavaOnlyArray
 import com.lynx.react.bridge.JavaOnlyMap
+import com.nanofuxion.tamerdevclient.BuildConfig
 import com.lynx.tasm.LynxView
 import com.lynx.tasm.behavior.LynxContext
+import com.squareup.seismic.ShakeDetector as SeismicShakeDetector
 import com.nanofuxion.tamerdevclient.nsd.DiscoveredServer
 import com.nanofuxion.tamerdevclient.nsd.NsdDiscovery
 import org.json.JSONArray
@@ -54,6 +62,34 @@ class DevClientModule(context: Context) : LynxModule(context) {
 
         fun attachHostActivity(activity: Activity?) {
             hostActivity = activity
+            if (activity != null) {
+                try {
+                    PerfSampler.ensureStarted(activity.applicationContext)
+                    PerfSampler.setListener { sample ->
+                        val inst = instance
+                        if (inst != null) {
+                            inst.emitPerfSample(sample)
+                        } else {
+                            lynxViewRef?.sendGlobalEvent(
+                                "devclient:perfSample",
+                                buildPerfSampleParams(sample),
+                            )
+                        }
+                    }
+                } catch (_: Throwable) {
+                }
+            }
+        }
+
+        internal fun buildPerfSampleParams(sample: PerfSampler.Sample): JavaOnlyArray {
+            val map = JavaOnlyMap()
+            map.putDouble("t", sample.t.toDouble())
+            map.putDouble("frametimeMs", sample.frametimeMs)
+            map.putDouble("cpuPct", sample.cpuPct)
+            map.putDouble("gpuPct", sample.gpuPct)
+            val params = JavaOnlyArray()
+            params.pushMap(map)
+            return params
         }
 
         fun attachLynxView(view: LynxView?) {
@@ -80,6 +116,98 @@ class DevClientModule(context: Context) : LynxModule(context) {
         }
 
         fun getSupportedModuleClassNames(): Set<String> = supportedModuleClassNames
+
+        private var openProjectDirectLauncher: ((String) -> Unit)? = null
+
+        fun attachOpenProjectDirectLauncher(launcher: ((String) -> Unit)?) {
+            openProjectDirectLauncher = launcher
+        }
+
+        @Volatile
+        private var seismicShakeDetector: SeismicShakeDetector? = null
+        @Volatile
+        private var onShakeCallback: (() -> Unit)? = null
+
+        @JvmStatic
+        fun notifyShakeDetected() {
+            vibrateShakeFeedback()
+            val callback = onShakeCallback
+            if (callback != null) {
+                callback.invoke()
+                return
+            }
+            val map = JavaOnlyMap()
+            map.putString("payload", "{}")
+            val params = JavaOnlyArray()
+            params.pushMap(map)
+            val inst = instance
+            if (inst != null) {
+                inst.emitShakeGlobalEvent(params)
+            } else {
+                lynxViewRef?.sendGlobalEvent("devclient:shakeDetected", params)
+            }
+        }
+
+        private fun stopShakeDetectorOnly() {
+            seismicShakeDetector?.stop()
+            seismicShakeDetector = null
+        }
+
+        @JvmStatic
+        @JvmOverloads
+        fun startShakeDetection(activity: Activity, onShake: (() -> Unit)? = null) {
+            Log.d(TAG, "startShakeDetection called")
+            stopShakeDetectorOnly()
+            onShakeCallback = onShake
+            val sm = activity.getSystemService(Context.SENSOR_SERVICE) as SensorManager
+            val accel = sm.getDefaultSensor(android.hardware.Sensor.TYPE_ACCELEROMETER)
+            Log.d(TAG, "Accelerometer available: ${accel != null}")
+            if (accel != null) {
+                Log.d(TAG, "Accelerometer: ${accel.name}, power=${accel.power}mA, resolution=${accel.resolution}")
+            }
+            val detector = SeismicShakeDetector(
+                SeismicShakeDetector.Listener {
+                    Log.d(TAG, "Shake detected!")
+                    notifyShakeDetected()
+                },
+            )
+            try {
+                if (!detector.start(sm)) {
+                    Log.w(TAG, "Seismic ShakeDetector.start returned false (no accelerometer?)")
+                } else {
+                    Log.d(TAG, "Seismic shake detection started successfully")
+                }
+                seismicShakeDetector = detector
+            } catch (e: SecurityException) {
+                Log.w(TAG, "SecurityException starting shake detection: ${e.message}")
+            } catch (e: Exception) {
+                Log.w(TAG, "Exception starting shake detection: ${e.message}", e)
+            }
+        }
+
+        @JvmStatic
+        fun stopShakeDetection() {
+            stopShakeDetectorOnly()
+            onShakeCallback = null
+        }
+
+        @SuppressLint("MissingPermission")
+        private fun vibrateShakeFeedback() {
+            if (!BuildConfig.DEBUG) return
+            val ctx = hostActivity?.applicationContext ?: return
+            val vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                (ctx.getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as VibratorManager).defaultVibrator
+            } else {
+                @Suppress("DEPRECATION")
+                ctx.getSystemService(Context.VIBRATOR_SERVICE) as Vibrator?
+            } ?: return
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                vibrator.vibrate(VibrationEffect.createOneShot(45, VibrationEffect.DEFAULT_AMPLITUDE))
+            } else {
+                @Suppress("DEPRECATION")
+                vibrator.vibrate(45)
+            }
+        }
     }
 
     private var nsdDiscovery: NsdDiscovery? = null
@@ -87,10 +215,17 @@ class DevClientModule(context: Context) : LynxModule(context) {
 
     data class CompatibilityResult(val compatible: Boolean, val requiredModules: List<Pair<String, String>>)
 
-    private fun fetchMetaJSONObject(baseUrl: String): JSONObject? {
+    private fun buildProbeRequest(url: String, probe: String): okhttp3.Request {
+        return okhttp3.Request.Builder()
+            .url(url)
+            .header("x-tamer-probe", probe)
+            .build()
+    }
+
+    private fun fetchMetaJSONObject(baseUrl: String, probe: String = "connect-meta"): JSONObject? {
         return try {
             val metaUrl = baseUrl.trimEnd('/') + "/meta.json"
-            val request = okhttp3.Request.Builder().url(metaUrl).build()
+            val request = buildProbeRequest(metaUrl, probe)
             val client = okhttp3.OkHttpClient.Builder()
                 .connectTimeout(5, java.util.concurrent.TimeUnit.SECONDS)
                 .readTimeout(5, java.util.concurrent.TimeUnit.SECONDS)
@@ -121,13 +256,14 @@ class DevClientModule(context: Context) : LynxModule(context) {
 
     private fun fetchMetaAndCheckCompatibility(baseUrl: String): CompatibilityResult? {
         val supported = DevClientModule.getSupportedModuleClassNames()
-        val json = fetchMetaJSONObject(baseUrl) ?: return if (supported.isEmpty()) CompatibilityResult(true, emptyList()) else null
+        val json = fetchMetaJSONObject(baseUrl, "compatibility-meta")
+            ?: return if (supported.isEmpty()) CompatibilityResult(true, emptyList()) else null
         return compatibilityFromMeta(json, supported)
     }
 
     private fun isCompatibleWithOptionalMeta(baseUrl: String, meta: JSONObject?): Boolean {
         val supported = DevClientModule.getSupportedModuleClassNames()
-        val json = meta ?: fetchMetaJSONObject(baseUrl) ?: return true
+        val json = meta ?: fetchMetaJSONObject(baseUrl, "discovery-meta") ?: return true
         return compatibilityFromMeta(json, supported).compatible
     }
 
@@ -144,6 +280,39 @@ class DevClientModule(context: Context) : LynxModule(context) {
     }
 
     private fun getLynxContext(): LynxContext? = mContext as? LynxContext
+
+    private fun emitShakeGlobalEvent(params: JavaOnlyArray) {
+        val lynxContext = getLynxContext()
+        if (lynxContext != null) {
+            lynxContext.sendGlobalEvent("devclient:shakeDetected", params)
+        } else {
+            lynxViewRef?.sendGlobalEvent("devclient:shakeDetected", params)
+        }
+    }
+
+    internal fun emitPerfSample(sample: PerfSampler.Sample) {
+        val params = buildPerfSampleParams(sample)
+        val lynxContext = getLynxContext()
+        if (lynxContext != null) {
+            lynxContext.sendGlobalEvent("devclient:perfSample", params)
+        } else {
+            lynxViewRef?.sendGlobalEvent("devclient:perfSample", params)
+        }
+    }
+
+    @LynxMethod
+    fun getPerfHistory(callback: Callback) {
+        val arr = JavaOnlyArray()
+        for (sample in PerfSampler.snapshot()) {
+            val map = JavaOnlyMap()
+            map.putDouble("t", sample.t.toDouble())
+            map.putDouble("frametimeMs", sample.frametimeMs)
+            map.putDouble("cpuPct", sample.cpuPct)
+            map.putDouble("gpuPct", sample.gpuPct)
+            arr.pushMap(map)
+        }
+        callback.invoke(arr)
+    }
 
     private fun emitDiscoveredServers(servers: List<DiscoveredServer>) {
         lastDiscovered = servers
@@ -171,6 +340,39 @@ class DevClientModule(context: Context) : LynxModule(context) {
     }
 
     private fun prefs() = mContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+
+    private fun loadMetaCacheEntry(url: String): JSONObject? {
+        val raw = prefs().getString(KEY_META_CACHE, "{}") ?: "{}"
+        val root = try {
+            JSONObject(raw)
+        } catch (_: Exception) {
+            JSONObject()
+        }
+        val entry = root.optJSONObject(url)
+        if (entry != null) return entry
+        val direct = root.opt(url)
+        return if (direct is JSONObject) direct else null
+    }
+
+    private fun buildCurrentProjectDebugInfoMap(): JavaOnlyMap {
+        val map = JavaOnlyMap()
+        val currentUrl = prefs().getString(KEY_URL, null)?.takeIf { it.isNotBlank() }
+        currentUrl?.let { map.putString("url", it) }
+
+        val recent = currentUrl?.let { url ->
+            loadRecentItems().firstOrNull { it.url == url }
+        }
+        val metaEntry = currentUrl?.let { loadMetaCacheEntry(it) }
+
+        val iconUrl = recent?.iconUrl ?: metaEntry?.optString("iconUrl")?.takeIf { it.isNotBlank() }
+        val label = recent?.label ?: metaEntry?.optString("label")?.takeIf { it.isNotBlank() }
+        val tamerAppKey = recent?.tamerAppKey ?: metaEntry?.optString("tamerAppKey")?.takeIf { it.isNotBlank() }
+
+        iconUrl?.let { map.putString("iconUrl", it) }
+        label?.let { map.putString("label", it) }
+        tamerAppKey?.let { map.putString("tamerAppKey", it) }
+        return map
+    }
 
     @LynxMethod
     fun getDevServerUrl(callback: Callback) {
@@ -413,6 +615,47 @@ class DevClientModule(context: Context) : LynxModule(context) {
     }
 
     @LynxMethod
+    fun openProjectDirect(bundleUrl: String) {
+        var normalized = bundleUrl.trim().removeSuffix("/").let { u ->
+            when {
+                u.endsWith("/main.lynx.bundle") -> u.removeSuffix("/main.lynx.bundle")
+                u.endsWith("main.lynx.bundle") -> u.removeSuffix("main.lynx.bundle").trimEnd('/')
+                else -> u
+            }
+        }
+        // Store the URL and open project
+        prefs().edit().putString(KEY_URL, normalized).commit()
+        mergeRecentImmediate(normalized)
+        Thread {
+            try {
+                enrichRecentWithMeta(normalized)
+            } catch (_: Exception) {
+            }
+        }.start()
+        // Invoke the launcher to open ProjectActivity with the URL
+        val activity = hostActivity
+        if (activity != null) {
+            activity.runOnUiThread {
+                openProjectDirectLauncher?.invoke(normalized)
+            }
+        } else {
+            openProjectDirectLauncher?.invoke(normalized)
+        }
+    }
+
+    @LynxMethod
+    fun getProjectDeepLink(callback: Callback) {
+        val devUrl = prefs().getString(KEY_URL, null)
+        if (devUrl.isNullOrEmpty()) {
+            callback.invoke("")
+            return
+        }
+        val encodedUrl = java.net.URLEncoder.encode(devUrl, "UTF-8")
+        val deepLink = "tamerdevapp://project?bundleUrl=$encodedUrl"
+        callback.invoke(deepLink)
+    }
+
+    @LynxMethod
     fun startDiscovery() {
         val app = mContext.applicationContext
         if (nsdDiscovery != null) return
@@ -447,6 +690,48 @@ class DevClientModule(context: Context) : LynxModule(context) {
     }
 
     @LynxMethod
+    fun getAppInfo(callback: Callback) {
+        val map = JavaOnlyMap()
+        val prefs = prefs()
+
+        // Try to read from cache first (set by launcher, shared with debug panel)
+        var bundleId = prefs.getString("app_info_bundleId", null)
+        var nativeAppVersion = prefs.getString("app_info_nativeAppVersion", null)
+        var lynxSdkVersion = prefs.getString("app_info_lynxSdkVersion", null)
+
+        // If not cached, read fresh and cache for next time
+        if (bundleId == null || nativeAppVersion == null || lynxSdkVersion == null) {
+            bundleId = mContext.packageName
+            nativeAppVersion = ""
+            try {
+                val info = mContext.packageManager.getPackageInfo(mContext.packageName, 0)
+                nativeAppVersion = info.versionName ?: ""
+            } catch (_: Exception) {
+            }
+            lynxSdkVersion = BuildConfig.DECLARED_LYNX_SDK_VERSION
+
+            // Cache for future calls
+            prefs.edit().apply {
+                putString("app_info_bundleId", bundleId)
+                putString("app_info_nativeAppVersion", nativeAppVersion)
+                putString("app_info_lynxSdkVersion", lynxSdkVersion)
+                apply()
+            }
+        }
+
+        map.putString("bundleId", bundleId ?: "")
+        map.putString("nativeAppVersion", nativeAppVersion ?: "")
+        map.putString("lynxSdkVersion", lynxSdkVersion ?: "")
+
+        callback.invoke(map)
+    }
+
+    @LynxMethod
+    fun getCurrentProjectDebugInfo(callback: Callback) {
+        callback.invoke(buildCurrentProjectDebugInfoMap())
+    }
+
+    @LynxMethod
     fun checkServerCompatibility(baseUrl: String, callback: Callback) {
         Thread {
             val result = fetchMetaAndCheckCompatibility(baseUrl)
@@ -470,5 +755,16 @@ class DevClientModule(context: Context) : LynxModule(context) {
                 callback.invoke(true, JavaOnlyArray())
             }
         }.start()
+    }
+
+    @LynxMethod
+    fun dismissTamerDebugPanel() {
+        val a = hostActivity ?: (mContext as? LynxContext)?.activity as? Activity
+        val run = Runnable { DevClientDebugPanel.dismiss() }
+        if (a != null) {
+            a.runOnUiThread(run)
+        } else {
+            run.run()
+        }
     }
 }

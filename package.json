@@ -6,7 +6,7 @@
     "tag": "prerelease"
   },
   "type": "module",
-  "description": "Native dev client module for Tamer4Lynx - QR scan, discovery, URL persistence, reload bridge, embedded dev launcher UI",
+  "description": "Native dev client module for Tamer4Lynx - QR scan, discovery, URL persistence, reload bridge, embedded dev launcher UI. npm run build emits both dist/dev-client.lynx.bundle (full launcher) and dist/tamer-debug.lynx.bundle (minimal debug panel only).",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/tamer4lynx/tamer-dev-client.git"
@@ -48,6 +48,7 @@
   },
   "author": "Nanofuxion",
   "license": "MIT",
+  "lynxSdk": "3.6.0",
   "files": [
     "src",
     "dist",

@@ -48,6 +48,8 @@
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
+  min-width: 0;
+  width: 100%;
 }
 
 .DevLauncher__sectionTitle {
@@ -64,6 +66,70 @@
   display: block;
 }
 
+.DevLauncher__aboutValue {
+  font-size: 15px;
+  font-weight: 500;
+  display: block;
+  margin-bottom: 4px;
+}
+
+.DevLauncher__card {
+  display: flex;
+  flex-direction: column;
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 16px;
+  border-width: 1px;
+  border-style: solid;
+  min-width: 0;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.DevLauncher__card:last-child {
+  margin-bottom: 0;
+}
+
+.DevLauncher__cardTitle {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  display: block;
+  margin-bottom: 12px;
+}
+
+.DevLauncher__cardBlock {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 14px;
+}
+
+.DevLauncher__cardBlock:last-child {
+  margin-bottom: 0;
+}
+
+.DevLauncher__card .DevLauncher__hint {
+  margin-bottom: 6px;
+}
+
+.DevLauncher__card .DevLauncher__aboutValue {
+  margin-bottom: 0;
+}
+
+.DevLauncher__scrollList {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+}
+
+.DevLauncher__combinedList {
+  display: flex;
+  flex-direction: column;
+  padding-top: 4px;
+  padding-bottom: 24px;
+}
+
 .DevLauncher__recentList {
   display: flex;
   flex-direction: column;
@@ -74,11 +140,12 @@
   position: relative;
   overflow: hidden;
   border-radius: 12px;
-  border: 1px solid var(--dev-outline, #333333);
+  border-width: 0;
 }
 
 .DevLauncher__swipeDelete {
   position: absolute;
+  z-index: 0;
   right: 0;
   top: 0;
   bottom: 0;
@@ -86,23 +153,14 @@
   align-items: center;
   justify-content: center;
   background-color: #dc2626;
+  border-top-right-radius: 12px;
+  border-bottom-right-radius: 12px;
 }
 
 .DevLauncher__swipeDeleteText {
   font-size: 15px;
   font-weight: 600;
   color: #ffffff;
-}
-
-.DevLauncher__recentItem {
-  padding: 14px 16px;
-  background-color: var(--dev-surface-container, #222222);
-  border-radius: 12px;
-  border: 1px solid var(--dev-outline, #333333);
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  gap: 12px;
 }
 
 .DevLauncher__serverRowInner {
@@ -126,12 +184,12 @@
   gap: 12px;
 }
 
-.DevLauncher__swipeForeground.DevLauncher__recentItem {
+.DevLauncher__swipeRowSurface {
   position: relative;
+  z-index: 1;
   width: 100%;
   box-sizing: border-box;
-  border-radius: 12px;
-  border-width: 0;
+  overflow: visible;
 }
 
 .DevLauncher__statusDot {
@@ -180,10 +238,6 @@
   flex-direction: column;
 }
 
-.DevLauncher__recentItem--discovered {
-  border-color: var(--dev-primary-tint, rgba(0, 122, 255, 0.5));
-}
-
 .DevLauncher__recentText {
   font-size: 14px;
   color: var(--dev-on-surface, #ffffff);
@@ -201,7 +255,10 @@
 }
 
 .DevLauncher__input {
+  box-sizing: border-box;
   width: 100%;
+  max-width: 100%;
+  min-width: 0;
   min-height: 48px;
   max-height: 48px;
   padding: 12px 16px;
@@ -209,6 +266,7 @@
   border-radius: 12px;
   margin-bottom: 16px;
   flex-shrink: 0;
+  overflow: hidden;
 }
 
 .DevLauncher__buttons {
@@ -216,37 +274,6 @@
   flex-direction: column;
   gap: 12px;
   flex-shrink: 0;
-}
-
-.DevLauncher__btn {
-  width: 100%;
-  min-height: 48px;
-  padding: 14px 20px;
-  border-radius: 12px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.DevLauncher__btn {
-  background-color: var(--dev-surface-container, #222222);
-  border: 1px solid var(--dev-outline, #333333);
-}
-
-.DevLauncher__btn--primary {
-  background-color: var(--dev-primary, #000000);
-  border-color: var(--dev-outline, #333333);
-}
-
-.DevLauncher__btn--secondary {
-  background-color: transparent;
-  border: 1px solid var(--dev-outline-muted, rgba(255, 255, 255, 0.25));
-}
-
-.DevLauncher__btnText {
-  font-size: 16px;
-  font-weight: 600;
-  color: var(--dev-on-surface, #ffffff);
 }
 
 .DevLauncher__or {

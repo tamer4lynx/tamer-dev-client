@@ -23,7 +23,6 @@ final class LynxInitProcessor {
         let env = LynxEnv.sharedInstance()
 #if DEBUG
         env.lynxDebugEnabled = true
-        env.devtoolEnabled = true
         env.logBoxEnabled = true
 #endif
         let globalConfig = LynxConfig(provider: env.config.templateProvider)

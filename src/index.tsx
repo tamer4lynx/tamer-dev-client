@@ -3,10 +3,10 @@ import { FileRouter } from '@tamer4lynx/tamer-router'
 import { DevLauncherProvider } from './DevLauncherContext'
 import './DevLauncher.css'
 
-import routes from '@tamer4lynx/tamer-router/generated-routes'
+import RootNavigator, { tamerLinking } from './generated-routes'
 
 root.render(
   <DevLauncherProvider>
-    <FileRouter routes={routes} />
+    <FileRouter routes={RootNavigator} linking={tamerLinking} />
   </DevLauncherProvider>
 )

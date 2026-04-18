@@ -10,7 +10,7 @@ npm install @tamer4lynx/tamer-dev-client
 
 Add to your app's dependencies and run `t4l link`. Used by **tamer-dev-app** for the dev launcher experience.
 
-The npm tarball includes **`dist/dev-client.lynx.bundle`** (built in **`prepublishOnly`**). Installs do not run Rspeedy. To work on this package from a git clone, run **`npm run build`** once so `dist/` exists.
+The npm tarball includes **`dist/dev-client.lynx.bundle`** and **`dist/tamer-debug.lynx.bundle`** (both built in **`prepublishOnly`**). Installs do not run Rspeedy. To work on this package from a git clone, run **`npm run build`** once so `dist/` exists.
 
 ## Usage
 
@@ -21,8 +21,19 @@ The dev client provides:
 - **Recent** — List of recently used dev server URLs
 - **Reload** — Reload the Lynx bundle
 - **Compatibility check** — Validates native modules between app and project
+- **Debug Panel** — Minimal debug UI available as `tamer-debug.lynx.bundle`
 
 When building the dev app (`t4l build ios -d` / `t4l build android -d`), the dev client UI is embedded and the Lynx bundle is loaded from the connected dev server.
+
+### Using the Debug Bundle
+
+The `tamer-debug.lynx.bundle` provides a lightweight debug panel that can be overlaid on your project activity/viewcontroller. User projects that consume `@tamer4lynx/tamer-dev-client` should:
+
+1. Copy both bundles to their native assets:
+   - **Android**: `app/src/main/assets/dev-client.lynx.bundle` and `app/src/main/assets/tamer-debug.lynx.bundle`
+   - **iOS**: Add both bundles as Copy Bundle Resource build phase files
+
+2. Update the native `TemplateProvider` to load both bundles. Generated code via `t4l android create` / `t4l ios create` automatically includes this support, but custom implementations should check `loadTemplate` and handle both bundle names.
 
 ## Lynx DevTool (debug hosts only)
 

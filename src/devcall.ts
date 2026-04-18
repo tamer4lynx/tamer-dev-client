@@ -17,7 +17,6 @@ function wrapCheckServerCompatibilityCallback(
 declare const NativeModules: {
   JiggleModule?: { vibrate: (duration: number) => void }
   DevClientModule: {
-    call?: (method: string, params: { data?: Record<string, unknown> }, callback?: (res: unknown) => void) => void
     scanQR: () => void
     setDevServerUrl: (url: string) => void
     getDevServerUrl: (callback: (url: string) => void) => void
@@ -31,20 +30,32 @@ declare const NativeModules: {
     stopDiscovery: () => void
     clearDevServerUrl: () => void
     reloadWithProjectBundle: () => void
+    openProjectDirect?: (url: string) => void
+    getProjectDeepLink?: (callback: (deepLink: string) => void) => void
     checkServerCompatibility?: (url: string, callback: (compatible: boolean, requiredModules: unknown) => void) => void
+    getAppInfo?: (callback: (info: Record<string, string>) => void) => void
+    getCurrentProjectDebugInfo?: (callback: (info: Record<string, string>) => void) => void
+    dismissTamerDebugPanel?: () => void
+    getPerfHistory?: (callback: (samples: unknown) => void) => void
   }
 }
 
 export function devCall(method: string, data?: Record<string, unknown>, callback?: (res?: unknown, res2?: unknown) => void) {
+  console.error('[devCall] enter method=', method, 'hasNativeModules=', typeof NativeModules !== 'undefined', 'hasMod=', !!NativeModules?.DevClientModule)
   const mod = NativeModules.DevClientModule
-  if (!mod) return
+  if (!mod) {
+    console.error('[devCall] DevClientModule missing; method=', method)
+    return
+  }
+  if (method === 'getAppInfo') {
+    console.error('[devCall] getAppInfo branch; fn type=', typeof mod.getAppInfo, 'keys=', Object.keys(mod).join(','))
+  }
   const cb =
     method === 'checkServerCompatibility' && callback != null
       ? wrapCheckServerCompatibilityCallback(callback)
       : callback
-  if (typeof mod.call === 'function') {
-    mod.call(method, { data: data ?? {} }, cb ?? (() => {}))
-  } else if (method === 'setDevServerUrl' && data?.url) {
+
+  if (method === 'setDevServerUrl' && data?.url) {
     mod.setDevServerUrl?.(String(data.url))
   } else if (method === 'scanQR') {
     mod.scanQR?.()
@@ -70,6 +81,28 @@ export function devCall(method: string, data?: Record<string, unknown>, callback
     } else {
       cb(true, [])
     }
+  } else if (method === 'getAppInfo' && callback) {
+    mod.getAppInfo?.((info: Record<string, string>) => {
+      callback(info)
+    })
+  } else if (method === 'getCurrentProjectDebugInfo' && callback) {
+    mod.getCurrentProjectDebugInfo?.((info: Record<string, string>) => {
+      callback(info)
+    })
+  } else if (method === 'openProjectDirect' && data?.url) {
+    mod.openProjectDirect?.(String(data.url))
+  } else if (method === 'getProjectDeepLink' && callback) {
+    mod.getProjectDeepLink?.(callback)
+  } else if (method === 'dismissTamerDebugPanel') {
+    mod.dismissTamerDebugPanel?.()
+  } else if (method === 'getPerfHistory' && callback) {
+    if (typeof mod.getPerfHistory === 'function') {
+      mod.getPerfHistory(callback)
+    } else {
+      callback([])
+    }
+  } else {
+    console.warn(`[tamer-dev-client] Unsupported DevClientModule method: ${method}`)
   }
 }
 

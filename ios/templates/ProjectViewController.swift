@@ -2,7 +2,15 @@ import UIKit
 import Lynx
 import tamerdevclient
 import tamerinsets
+import tamerrouter
 import tamersystemui
+
+private func tamer_project_disableLynxLongPressMenuIfAvailable() {
+    guard let cls = NSClassFromString("LynxDevtoolEnv") else { return }
+    let sel = NSSelectorFromString("sharedInstance")
+    guard let env = (cls as AnyObject).perform(sel)?.takeUnretainedValue() as? NSObject else { return }
+    env.setValue(false, forKey: "longPressMenuEnabled")
+}
 
 class ProjectViewController: UIViewController {
     private var lynxView: LynxView?
@@ -10,6 +18,13 @@ class ProjectViewController: UIViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
+#if DEBUG
+        let env = LynxEnv.sharedInstance()
+        env.lynxDebugEnabled = true
+        env.devtoolEnabled = true
+        env.logBoxEnabled = true
+#endif
+        tamer_project_disableLynxLongPressMenuIfAvailable()
         view.backgroundColor = .black
         edgesForExtendedLayout = .all
         extendedLayoutIncludesOpaqueBars = true
@@ -20,7 +35,6 @@ class ProjectViewController: UIViewController {
             viewRespectsSystemMinimumLayoutMargins = false
         }
         setupLynxView()
-        TamerRelogLogService.connect()
         devClientManager = DevClientManager(onReload: { [weak self] in
             self?.reloadLynxView()
         })
@@ -59,6 +73,7 @@ class ProjectViewController: UIViewController {
         let lv = buildLynxView()
         view.addSubview(lv)
         TamerInsetsModule.attachHostView(lv)
+        TamerRouterNativeModule.attachHostView(lv)
         lv.loadTemplate(fromURL: "main.lynx.bundle", initData: DevServerPrefs.getProjectInitTemplateData())
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self, weak lv] in
             guard let self, let lv else { return }
@@ -70,6 +85,7 @@ class ProjectViewController: UIViewController {
 
     private func reloadLynxView() {
         TamerInsetsModule.attachHostView(nil)
+        TamerRouterNativeModule.attachHostView(nil)
         lynxView?.removeFromSuperview()
         lynxView = nil
         setupLynxView()
@@ -107,7 +123,8 @@ class ProjectViewController: UIViewController {
         super.viewWillDisappear(animated)
         if isBeingDismissed || isMovingFromParent {
             devClientManager?.disconnect()
-            TamerRelogLogService.disconnect()
+            TamerInsetsModule.attachHostView(nil)
+            TamerRouterNativeModule.attachHostView(nil)
         }
     }
 }

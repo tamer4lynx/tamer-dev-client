@@ -2,6 +2,7 @@ import UIKit
 import Lynx
 import tamerdevclient
 import tamerinsets
+import tamerrouter
 import tamersystemui
 
 class DevLauncherViewController: UIViewController {
@@ -49,6 +50,7 @@ class DevLauncherViewController: UIViewController {
         view.addSubview(lv)
         applyFullscreenLayout(to: lv)
         TamerInsetsModule.attachHostView(lv)
+        TamerRouterNativeModule.attachHostView(lv)
         lv.loadTemplate(fromURL: "dev-client.lynx.bundle", initData: nil)
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self, weak lv] in
             guard let self, let lv else { return }

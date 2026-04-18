@@ -4,7 +4,8 @@ export type ReachabilityResult =
   | { kind: 'unreachable' }
 
 const META_TIMEOUT_MS = 5000
-const ROOT_PROBE_TIMEOUT_MS = 4000
+const STATUS_TIMEOUT_MS = 4000
+const PROBE_HEADER = 'x-tamer-probe'
 
 function withTimeoutMs(ms: number): { signal: AbortSignal; cancel: () => void } {
   const c = new AbortController()
@@ -20,37 +21,26 @@ export function normalizeDevServerBase(input: string): string {
   return s
 }
 
-function looksLikeHttpOrHttpsUrl(s: string): boolean {
-  return /^https?:\/\/.+/i.test(s.trim())
-}
-
-function isHttpOrHttpsProtocol(protocol: string | undefined | null): boolean {
-  if (protocol == null) return false
-  const p = String(protocol).trim().toLowerCase().replace(/:+$/, '')
-  return p === 'http' || p === 'https'
-}
-
 export type ValidateUrlResult =
   | { ok: true; parsed: string }
   | { ok: false; error: string }
 
+/**
+ * `http(s)://` + host (bracketed IPv6, IPv4, or hostname) + optional `:port` + optional path
+ * (e.g. `/`, `/example`, `/example/main.lynx.bundle`). No `URL` API — works the same on Lynx PrimJS.
+ */
+const DEV_SERVER_HTTP_URL_RE =
+  /^https?:\/\/(\[[0-9a-fA-F:.]+\]|[^/?:#\s@]+)(?::(\d{1,5}))?(\/[^\s?#]*)?$/i
+
 export function validateDevServerUrl(input: string): ValidateUrlResult {
   const parsed = normalizeDevServerBase(input)
   if (!parsed.trim()) return { ok: false, error: 'Enter a server URL' }
-  let u: URL
-  try {
-    u = new URL(parsed)
-  } catch {
-    return { ok: false, error: 'Invalid URL' }
-  }
-  if (!isHttpOrHttpsProtocol(u.protocol) && !looksLikeHttpOrHttpsUrl(parsed)) {
-    return { ok: false, error: 'Only http and https URLs are supported' }
-  }
-  if ((!u.hostname || u.hostname.length === 0) && !looksLikeHttpOrHttpsUrl(parsed)) {
-    return { ok: false, error: 'Missing host' }
-  }
-  const portStr = u.port != null && u.port !== '' ? String(u.port).trim() : ''
-  if (portStr !== '') {
+  const m = DEV_SERVER_HTTP_URL_RE.exec(parsed)
+  if (!m) return { ok: false, error: 'Invalid URL' }
+  const host = m[1]
+  if (!host || host.length === 0) return { ok: false, error: 'Missing host' }
+  const portStr = m[2]
+  if (portStr !== undefined && portStr !== '') {
     const p = Number(portStr)
     if (!Number.isFinite(p) || p !== Math.trunc(p) || p < 1 || p > 65535) {
       return { ok: false, error: 'Invalid port' }
@@ -63,16 +53,24 @@ function metaUrlForBase(base: string): string {
   return `${base.replace(/\/+$/, '')}/meta.json`
 }
 
+function statusUrlForBase(base: string): string {
+  return `${base.replace(/\/+$/, '')}/status`
+}
+
 export async function probeDevServerReachability(baseUrl: string): Promise<ReachabilityResult> {
   const meta = metaUrlForBase(baseUrl)
   const { signal, cancel } = withTimeoutMs(META_TIMEOUT_MS)
   try {
-    const res = await fetch(meta, { method: 'GET', signal })
+    const res = await fetch(meta, {
+      method: 'GET',
+      signal,
+      headers: { [PROBE_HEADER]: 'launcher-meta' },
+    })
     if (res.ok) {
       return { kind: 'reachable_tamer' }
     }
     if (res.status === 404) {
-      return probeRootOnly(baseUrl)
+      return probeStatusOnly(baseUrl)
     }
     return { kind: 'unreachable' }
   } catch {
@@ -82,12 +80,19 @@ export async function probeDevServerReachability(baseUrl: string): Promise<Reach
   }
 }
 
-async function probeRootOnly(baseUrl: string): Promise<ReachabilityResult> {
-  const root = baseUrl.replace(/\/+$/, '') + '/'
-  const { signal, cancel } = withTimeoutMs(ROOT_PROBE_TIMEOUT_MS)
+async function probeStatusOnly(baseUrl: string): Promise<ReachabilityResult> {
+  const status = statusUrlForBase(baseUrl)
+  const { signal, cancel } = withTimeoutMs(STATUS_TIMEOUT_MS)
   try {
-    const res = await fetch(root, { method: 'GET', signal })
-    if (res.status >= 200 && res.status < 600) return { kind: 'reachable_no_meta' }
+    const res = await fetch(status, {
+      method: 'GET',
+      signal,
+      headers: { [PROBE_HEADER]: 'launcher-status' },
+    })
+    if (res.ok) {
+      const text = await res.text()
+      if (text.includes('packager-status:running')) return { kind: 'reachable_no_meta' }
+    }
     return { kind: 'unreachable' }
   } catch {
     return { kind: 'unreachable' }
@@ -112,8 +117,12 @@ export async function probeRecentMetaMatch(
   const meta = metaUrlForBase(baseUrl)
   const { signal, cancel } = withTimeoutMs(META_TIMEOUT_MS)
   try {
-    const res = await fetch(meta, { method: 'GET', signal })
-    if (!res.ok) return 'offline'
+    const res = await fetch(meta, {
+      method: 'GET',
+      signal,
+      headers: { [PROBE_HEADER]: 'recent-meta' },
+    })
+    if (!res.ok) return res.status === 404 ? 'stale' : 'offline'
     let json: Record<string, unknown>
     try {
       json = JSON.parse(await res.text()) as Record<string, unknown>

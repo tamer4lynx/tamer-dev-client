@@ -105,10 +105,16 @@ public final class DevClientModule: NSObject, LynxModule {
             "clearDevServerUrl":        NSStringFromSelector(#selector(clearDevServerUrl)),
             "scanQR":                   NSStringFromSelector(#selector(scanQR)),
             "reloadWithProjectBundle":  NSStringFromSelector(#selector(reloadWithProjectBundle)),
+            "openProjectDirect":        NSStringFromSelector(#selector(openProjectDirect(_:))),
+            "getProjectDeepLink":       NSStringFromSelector(#selector(getProjectDeepLink(_:))),
             "startDiscovery":           NSStringFromSelector(#selector(startDiscovery)),
             "stopDiscovery":            NSStringFromSelector(#selector(stopDiscovery)),
             "getDiscoveredServers":     NSStringFromSelector(#selector(getDiscoveredServers(_:))),
             "checkServerCompatibility": NSStringFromSelector(#selector(checkServerCompatibility(_:callback:))),
+            "getAppInfo":               NSStringFromSelector(#selector(getAppInfo(_:))),
+            "getCurrentProjectDebugInfo": NSStringFromSelector(#selector(getCurrentProjectDebugInfo(_:))),
+            "dismissTamerDebugPanel":   NSStringFromSelector(#selector(dismissTamerDebugPanel)),
+            "getPerfHistory":           NSStringFromSelector(#selector(getPerfHistory(_:))),
         ]
     }
 
@@ -128,6 +134,11 @@ public final class DevClientModule: NSObject, LynxModule {
         supportedModulesLock.lock()
         supportedModuleClassNamesInternal = Set(names.filter { !$0.isEmpty })
         supportedModulesLock.unlock()
+    }
+
+    /// Emits `devclient:shakeDetected` on the Lynx global event bus (e.g. from host `motionEnded` shake).
+    public static func emitShakeDetected() {
+        shared?.emitShakeEvent()
     }
 
     /// Fallback when `attachSupportedModuleClassNames` was not run (e.g. custom LynxInit): `tamer-host-native-modules.json` from app Resources (written by Tamer iOS autolink).
@@ -164,19 +175,31 @@ public final class DevClientModule: NSObject, LynxModule {
     /// Navigate to the project view controller.
     public static var reloadProjectHandler: (() -> Void)?
 
+    /// Open project directly with a specific bundle URL (called from openProjectDirect).
+    public static var openProjectDirectHandler: ((String) -> Void)?
+
+    /// Dismiss the embedded Tamer debug overlay / native debug dialog (from `tamer-debug.lynx.bundle` Close action).
+    public static var dismissTamerDebugPanelHandler: (() -> Void)?
+
     // MARK: - Instance State
 
     private weak var lynxContext: LynxContext?
     private var bonjourResolver: BonjourResolver?
     private var lastDiscovered: [[String: Any]] = []
 
+    private static func makeProbeRequest(url: URL, probe: String) -> URLRequest {
+        var req = URLRequest(url: url)
+        req.timeoutInterval = 5
+        req.setValue(probe, forHTTPHeaderField: "x-tamer-probe")
+        return req
+    }
+
     private static func packagerRunningSync(_ baseUrl: String) -> Bool {
         let trimmed = baseUrl.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
         guard let url = URL(string: trimmed + "/status") else { return false }
         let sem = DispatchSemaphore(value: 0)
         var running = false
-        var req = URLRequest(url: url)
-        req.timeoutInterval = 5
+        let req = makeProbeRequest(url: url, probe: "discovery-status")
         URLSession.shared.dataTask(with: req) { data, _, _ in
             defer { sem.signal() }
             guard let data = data, let text = String(data: data, encoding: .utf8) else { return }
@@ -191,8 +214,7 @@ public final class DevClientModule: NSObject, LynxModule {
         guard let url = URL(string: trimmed + "/meta.json") else { return nil }
         let sem = DispatchSemaphore(value: 0)
         var result: [String: Any]?
-        var req = URLRequest(url: url)
-        req.timeoutInterval = 5
+        let req = makeProbeRequest(url: url, probe: "discovery-meta")
         URLSession.shared.dataTask(with: req) { data, _, _ in
             defer { sem.signal() }
             guard let data = data,
@@ -255,11 +277,43 @@ public final class DevClientModule: NSObject, LynxModule {
         super.init()
         lynxContext = param as? LynxContext
         DevClientModule.shared = self
+        DevClientModule.ensurePerfSamplerStarted()
     }
 
     @objc public override init() {
         super.init()
         DevClientModule.shared = self
+        DevClientModule.ensurePerfSamplerStarted()
+    }
+
+    private static var perfSamplerWired = false
+    private static let perfSamplerLock = NSLock()
+
+    private static func ensurePerfSamplerStarted() {
+        perfSamplerLock.lock()
+        defer { perfSamplerLock.unlock() }
+        if perfSamplerWired { return }
+        perfSamplerWired = true
+        PerfSampler.shared.onSample = { sample in
+            DispatchQueue.main.async {
+                DevClientModule.shared?.emitPerfSample(sample)
+            }
+        }
+        PerfSampler.shared.ensureStarted()
+    }
+
+    private func emitPerfSample(_ sample: PerfSample) {
+        let params: [[String: Any]] = [sample.toDictionary()]
+        if let ctx = lynxContext {
+            ctx.sendGlobalEvent("devclient:perfSample", withParams: params)
+        } else if let ctx = DevClientModule.shared?.lynxContext {
+            ctx.sendGlobalEvent("devclient:perfSample", withParams: params)
+        }
+    }
+
+    @objc func getPerfHistory(_ callback: LynxCallbackBlock) {
+        let rows: [NSDictionary] = PerfSampler.shared.snapshotDictionaries().map { $0 as NSDictionary }
+        callback(rows as NSArray)
     }
 
     // MARK: - LynxModule Methods
@@ -321,6 +375,35 @@ public final class DevClientModule: NSObject, LynxModule {
         }
     }
 
+    @objc func dismissTamerDebugPanel() {
+        DispatchQueue.main.async {
+            DevClientModule.dismissTamerDebugPanelHandler?()
+        }
+    }
+
+    @objc func openProjectDirect(_ bundleUrl: String) {
+        var normalized = bundleUrl.trimmingCharacters(in: .whitespaces)
+        if normalized.hasSuffix("/main.lynx.bundle") {
+            normalized = String(normalized.dropLast("/main.lynx.bundle".count))
+        } else if normalized.hasSuffix("main.lynx.bundle") {
+            normalized = String(normalized.dropLast("main.lynx.bundle".count))
+                .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        }
+        DispatchQueue.main.async {
+            DevClientModule.openProjectDirectHandler?(normalized)
+        }
+    }
+
+    @objc func getProjectDeepLink(_ callback: LynxCallbackBlock) {
+        guard let devUrl = DevServerPrefs.getUrl(), !devUrl.isEmpty else {
+            callback("" as Any)
+            return
+        }
+        let encodedUrl = devUrl.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? devUrl
+        let deepLink = "tamerdevapp://project?bundleUrl=\(encodedUrl)"
+        callback(deepLink as Any)
+    }
+
     @objc func startDiscovery() {
         guard bonjourResolver == nil else { return }
         let resolver = BonjourResolver()
@@ -352,6 +435,22 @@ public final class DevClientModule: NSObject, LynxModule {
         callback(list as NSArray)
     }
 
+    @objc func getAppInfo(_ callback: LynxCallbackBlock) {
+        let bundleId = Bundle.main.bundleIdentifier ?? ""
+        let nativeVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? ""
+        let lynxSdk = TamerDevClientLynxSdkInfo.sdkVersionString()
+        let map: [String: Any] = [
+            "bundleId": bundleId,
+            "nativeAppVersion": nativeVersion,
+            "lynxSdkVersion": lynxSdk
+        ]
+        callback(map as NSDictionary)
+    }
+
+    @objc func getCurrentProjectDebugInfo(_ callback: LynxCallbackBlock) {
+        callback(DevServerPrefs.getCurrentProjectDebugInfo() as NSDictionary)
+    }
+
     @objc func checkServerCompatibility(_ baseUrl: String, callback: @escaping LynxCallbackBlock) {
         DispatchQueue.global(qos: .utility).async {
             let supported = DevClientModule.supportedModuleClassNamesSnapshot()
@@ -362,8 +461,7 @@ public final class DevClientModule: NSObject, LynxModule {
                 }
                 return
             }
-            var req = URLRequest(url: url)
-            req.timeoutInterval = 5
+            let req = DevClientModule.makeProbeRequest(url: url, probe: "compatibility-meta")
             URLSession.shared.dataTask(with: req) { data, _, _ in
                 if supported.isEmpty {
                     DispatchQueue.main.async {
@@ -430,6 +528,10 @@ public final class DevClientModule: NSObject, LynxModule {
             ctx.sendGlobalEvent(name, withParams: params)
         }
     }
+
+    private func emitShakeEvent() {
+        sendEvent("devclient:shakeDetected", payload: "{}")
+    }
 }
 
 // MARK: - DevServerPrefs
@@ -491,6 +593,21 @@ public final class DevServerPrefs {
         loadRecentItems().map {
             DevRecentEntry(url: $0.url, tamerAppKey: $0.tamerAppKey, label: $0.label, iconUrl: $0.iconUrl)
         }
+    }
+
+    public static func getCurrentProjectDebugInfo() -> [String: Any] {
+        let currentUrl = getUrl()?.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty
+        let recent = currentUrl.flatMap { url in
+            loadRecentItems().first(where: { $0.url == url })
+        }
+        let meta = currentUrl.flatMap { loadMetaCacheEntry(url: $0) }
+
+        var map: [String: Any] = [:]
+        if let currentUrl { map["url"] = currentUrl }
+        if let icon = recent?.iconUrl ?? meta?["iconUrl"] as? String, !icon.isEmpty { map["iconUrl"] = icon }
+        if let label = recent?.label ?? meta?["label"] as? String, !label.isEmpty { map["label"] = label }
+        if let key = recent?.tamerAppKey ?? meta?["tamerAppKey"] as? String, !key.isEmpty { map["tamerAppKey"] = key }
+        return map
     }
 
     public static func removeRecentUrl(_ url: String) {
@@ -557,8 +674,7 @@ public final class DevServerPrefs {
         guard let u = URL(string: trimmed + "/meta.json") else { return nil }
         let sem = DispatchSemaphore(value: 0)
         var out: [String: Any]?
-        var req = URLRequest(url: u)
-        req.timeoutInterval = 5
+        let req = DevClientModule.makeProbeRequest(url: u, probe: "connect-meta")
         URLSession.shared.dataTask(with: req) { data, _, _ in
             defer { sem.signal() }
             guard let data = data,
@@ -567,6 +683,16 @@ public final class DevServerPrefs {
         }.resume()
         _ = sem.wait(timeout: .now() + .seconds(6))
         return out
+    }
+
+    private static func loadMetaCacheEntry(url: String) -> [String: Any]? {
+        guard let existing = defaults.string(forKey: keyMetaCache),
+              let data = existing.data(using: .utf8),
+              let parsed = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let entry = parsed[url] as? [String: Any] else {
+            return nil
+        }
+        return entry
     }
 
     private static func buildProjectInitData(_ meta: [String: Any]?) -> String {
