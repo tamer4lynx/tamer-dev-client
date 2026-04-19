@@ -187,7 +187,7 @@ public final class DevClientModule: NSObject, LynxModule {
     private var bonjourResolver: BonjourResolver?
     private var lastDiscovered: [[String: Any]] = []
 
-    private static func makeProbeRequest(url: URL, probe: String) -> URLRequest {
+    fileprivate static func makeProbeRequest(url: URL, probe: String) -> URLRequest {
         var req = URLRequest(url: url)
         req.timeoutInterval = 5
         req.setValue(probe, forHTTPHeaderField: "x-tamer-probe")

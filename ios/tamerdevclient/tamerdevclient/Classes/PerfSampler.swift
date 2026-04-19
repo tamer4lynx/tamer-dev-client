@@ -128,7 +128,8 @@ public final class PerfSampler: NSObject {
         var totalPct: Double = 0
         for i in 0..<Int(threadCount) {
             var info = thread_basic_info()
-            var count = mach_msg_type_number_t(THREAD_BASIC_INFO_COUNT)
+            var count = mach_msg_type_number_t(
+                MemoryLayout<thread_basic_info>.size / MemoryLayout<natural_t>.size)
             let kr2 = withUnsafeMutablePointer(to: &info) { ptr -> kern_return_t in
                 ptr.withMemoryRebound(to: integer_t.self, capacity: Int(count)) { reb in
                     thread_info(threads[i], thread_flavor_t(THREAD_BASIC_INFO), reb, &count)
