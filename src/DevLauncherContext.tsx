@@ -215,6 +215,9 @@ export function DevLauncherProvider({ children }: { children: React.ReactNode })
 
   useEffect(() => {
     'background only'
+    devCall('getDevServerUrl', undefined, (saved) => {
+      if (saved) setUrlState(String(saved))
+    })
     loadRecentFromNative()
   }, [loadRecentFromNative])
 
@@ -256,6 +259,7 @@ export function DevLauncherProvider({ children }: { children: React.ReactNode })
   const connectToUrl = useCallback(
     (parsed: string) => {
       'background only'
+      console.error('[DevLauncher] connectToUrl parsed=', parsed)
       if (!(typeof NativeModules !== 'undefined' && NativeModules?.DevClientModule != null)) {
         devCall('setDevServerUrl', { url: parsed })
         refreshRecent()
@@ -264,6 +268,7 @@ export function DevLauncherProvider({ children }: { children: React.ReactNode })
         return
       }
       devCall('checkServerCompatibility', { url: parsed }, (compatible: unknown, rawModules: unknown) => {
+        console.error('[DevLauncher] compatibility result=', compatible, 'rawModules=', rawModules)
         const ok = compatible === true
         const modules = toRequiredModules(rawModules)
         if (!ok && modules.length > 0) {
@@ -297,13 +302,16 @@ export function DevLauncherProvider({ children }: { children: React.ReactNode })
     (rawUrl: string) => {
       'background only'
       void (async () => {
+        console.error('[DevLauncher] openProject rawUrl=', rawUrl)
         const validated = validateDevServerUrl(rawUrl)
         if (!validated.ok) {
+          console.error('[DevLauncher] openProject validation failed error=', validated.error)
           setConnectError(validated.error)
           return
         }
         setConnectError('')
         const reach = await probeDevServerReachability(validated.parsed)
+        console.error('[DevLauncher] openProject reachability=', reach.kind, 'parsed=', validated.parsed)
         if (reach.kind === 'unreachable') {
           setConnectError('Server unreachable')
           return

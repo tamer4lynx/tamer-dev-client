@@ -1,8 +1,6 @@
-import { useCallback, useMemo } from '@lynx-js/react'
-import { Button } from '@tamer4lynx/tamer-app-shell'
+import { useCallback } from '@lynx-js/react'
 import CombinedServerList from '../components/CombinedServerList'
 import { useDevLauncher, resolveTheme } from '../DevLauncherContext'
-import { validateDevServerUrl } from '../devServerUrl'
 
 export default function ConnectPage() {
   const {
@@ -22,11 +20,10 @@ export default function ConnectPage() {
     removeRecentItem,
   } = useDevLauncher()
   const colors = resolveTheme(theme)
-  const canConnect = useMemo(() => validateDevServerUrl(url).ok, [url])
 
   const onConnect = useCallback(() => {
     'background only'
-    if (!validateDevServerUrl(url).ok) return
+    console.error('[DevLauncher] Connect tapped url=', url)
     openProject(url)
   }, [url, openProject])
 
@@ -69,22 +66,21 @@ export default function ConnectPage() {
           <text className="DevLauncher__hint" style={{ color: '#ef4444', marginBottom: '12px' }}>{connectError}</text>
         ) : null}
         <view className="DevLauncher__buttons">
-          <Button
-            label="Connect"
-            variant="filled"
-            disabled={!canConnect}
-            onTap={onConnect}
-            style={{ width: '100%' }}
-            colors={{ container: colors.primary }}
-          />
+          <view
+            className="DevLauncher__btn DevLauncher__btn--primary"
+            style={{ backgroundColor: colors.primary, borderColor: colors.surfaceContainer }}
+            bindtap={onConnect}
+          >
+            <text className="DevLauncher__btnText" style={{ color: colors.surface }}>Connect</text>
+          </view>
           <text className="DevLauncher__or" style={{ color: colors.onSurface }}>Or</text>
-          <Button
-            label="Scan QR code"
-            variant="elevated"
-            onTap={onScanQR}
-            style={{ width: '100%' }}
-            colors={{ container: colors.surfaceContainer, label: colors.onSurface }}
-          />
+          <view
+            className="DevLauncher__btn"
+            style={{ backgroundColor: colors.surfaceContainer, borderColor: colors.surfaceContainer }}
+            bindtap={onScanQR}
+          >
+            <text className="DevLauncher__btnText" style={{ color: colors.onSurface }}>Scan QR code</text>
+          </view>
         </view>
       </view>
       <scroll-view

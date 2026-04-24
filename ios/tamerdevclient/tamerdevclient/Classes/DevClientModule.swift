@@ -128,6 +128,9 @@ public final class DevClientModule: NSObject, LynxModule {
     private static let bundledManifestLock = NSLock()
     private static var bundledManifestResolved = false
     private static var bundledManifestClassNames = Set<String>()
+    private static let projectOpenRequestLock = NSLock()
+    private static var lastProjectOpenRequestAt: TimeInterval = 0
+    private static let projectOpenRequestDebounceWindow: TimeInterval = 2.0
 
     /// Same JVM-style class names as Android meta.json / discoverNativeExtensions (e.g. com.nanofuxion.tamerrouter.TamerRouterNativeModule).
     public static func attachSupportedModuleClassNames(_ names: [String]) {
@@ -180,6 +183,17 @@ public final class DevClientModule: NSObject, LynxModule {
 
     /// Dismiss the embedded Tamer debug overlay / native debug dialog (from `tamer-debug.lynx.bundle` Close action).
     public static var dismissTamerDebugPanelHandler: (() -> Void)?
+
+    private static func claimProjectOpenRequest() -> Bool {
+        let now = Date().timeIntervalSince1970
+        projectOpenRequestLock.lock()
+        defer { projectOpenRequestLock.unlock() }
+        if now - lastProjectOpenRequestAt < projectOpenRequestDebounceWindow {
+            return false
+        }
+        lastProjectOpenRequestAt = now
+        return true
+    }
 
     // MARK: - Instance State
 
@@ -330,6 +344,7 @@ public final class DevClientModule: NSObject, LynxModule {
             normalized = String(normalized.dropLast("main.lynx.bundle".count))
                 .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
         }
+        NSLog("[DevClientModule] setDevServerUrl normalized=%@", normalized)
         DevServerPrefs.setUrl(normalized)
     }
 
@@ -371,6 +386,12 @@ public final class DevClientModule: NSObject, LynxModule {
 
     @objc func reloadWithProjectBundle() {
         DispatchQueue.main.async {
+            let accepted = DevClientModule.claimProjectOpenRequest()
+            NSLog("[DevClientModule] reloadWithProjectBundle handlerPresent=%@ accepted=%@", DevClientModule.reloadProjectHandler == nil ? "false" : "true", accepted ? "true" : "false")
+            guard accepted else {
+                NSLog("[DevClientModule] reloadWithProjectBundle skipped duplicate open request")
+                return
+            }
             DevClientModule.reloadProjectHandler?()
         }
     }
@@ -389,6 +410,13 @@ public final class DevClientModule: NSObject, LynxModule {
             normalized = String(normalized.dropLast("main.lynx.bundle".count))
                 .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
         }
+        let accepted = DevClientModule.claimProjectOpenRequest()
+        NSLog("[DevClientModule] openProjectDirect normalized=%@ handlerPresent=%@ accepted=%@", normalized, DevClientModule.openProjectDirectHandler == nil ? "false" : "true", accepted ? "true" : "false")
+        guard accepted else {
+            NSLog("[DevClientModule] openProjectDirect skipped duplicate open request")
+            return
+        }
+        DevServerPrefs.setUrl(normalized)
         DispatchQueue.main.async {
             DevClientModule.openProjectDirectHandler?(normalized)
         }
@@ -452,11 +480,13 @@ public final class DevClientModule: NSObject, LynxModule {
     }
 
     @objc func checkServerCompatibility(_ baseUrl: String, callback: @escaping LynxCallbackBlock) {
+        NSLog("[DevClientModule] checkServerCompatibility baseUrl=%@", baseUrl)
         DispatchQueue.global(qos: .utility).async {
             let supported = DevClientModule.supportedModuleClassNamesSnapshot()
             let trimmed = baseUrl.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
             guard let url = URL(string: trimmed + "/meta.json") else {
                 DispatchQueue.main.async {
+                    NSLog("[DevClientModule] compatibility invalidMetaUrl baseUrl=%@", baseUrl)
                     callback([NSNumber(value: true), []] as NSArray)
                 }
                 return
@@ -465,6 +495,7 @@ public final class DevClientModule: NSObject, LynxModule {
             URLSession.shared.dataTask(with: req) { data, _, _ in
                 if supported.isEmpty {
                     DispatchQueue.main.async {
+                        NSLog("[DevClientModule] compatibility supportedSetEmpty baseUrl=%@", baseUrl)
                         callback([NSNumber(value: true), []] as NSArray)
                     }
                     return
@@ -472,6 +503,7 @@ public final class DevClientModule: NSObject, LynxModule {
                 guard let data = data,
                       let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
                     DispatchQueue.main.async {
+                        NSLog("[DevClientModule] compatibility metaFetchFailed baseUrl=%@", baseUrl)
                         callback([NSNumber(value: true), []] as NSArray)
                     }
                     return
@@ -490,6 +522,7 @@ public final class DevClientModule: NSObject, LynxModule {
                     ["packageName": $0["packageName"] ?? "", "moduleClassName": $0["moduleClassName"] ?? ""] as NSDictionary
                 }
                 DispatchQueue.main.async {
+                    NSLog("[DevClientModule] compatibility result compatible=%@ missingCount=%ld", compatible ? "true" : "false", missing.count)
                     callback([NSNumber(value: compatible), outMaps] as NSArray)
                 }
             }.resume()
