@@ -1,4 +1,5 @@
 import { useCallback } from '@lynx-js/react'
+import { Button } from '@tamer4lynx/tamer-app-shell'
 import CombinedServerList from '../components/CombinedServerList'
 import { useDevLauncher, resolveTheme } from '../DevLauncherContext'
 
@@ -35,7 +36,11 @@ export default function ConnectPage() {
         display: 'flex',
         flexDirection: 'column',
         flex: 1,
-        minHeight: 0,
+        flexGrow: 1,
+        flexShrink: 1,
+        flexBasis: '0px',
+        minHeight: '0px',
+        width: '100%',
       }}
     >
       <view className="DevLauncher__section" style={{ flexShrink: 0 }}>
@@ -48,7 +53,7 @@ export default function ConnectPage() {
             backgroundColor: colors.surfaceContainer,
             color: colors.onSurface,
             boxSizing: 'border-box',
-            minWidth: 0,
+            minWidth: '0px',
             maxWidth: '100%',
             overflow: 'hidden',
           }}
@@ -66,49 +71,59 @@ export default function ConnectPage() {
           <text className="DevLauncher__hint" style={{ color: '#ef4444', marginBottom: '12px' }}>{connectError}</text>
         ) : null}
         <view className="DevLauncher__buttons">
-          <view
-            className="DevLauncher__btn DevLauncher__btn--primary"
-            style={{ backgroundColor: colors.primary, borderColor: colors.surfaceContainer }}
-            bindtap={onConnect}
-          >
-            <text className="DevLauncher__btnText" style={{ color: colors.surface }}>Connect</text>
-          </view>
+          <Button
+            label="Connect"
+            variant="filled"
+            onTap={onConnect}
+            style={{ width: '100%' }}
+            colors={{ container: colors.primary, label: colors.surface }}
+          />
           <text className="DevLauncher__or" style={{ color: colors.onSurface }}>Or</text>
-          <view
-            className="DevLauncher__btn"
-            style={{ backgroundColor: colors.surfaceContainer, borderColor: colors.surfaceContainer }}
-            bindtap={onScanQR}
-          >
-            <text className="DevLauncher__btnText" style={{ color: colors.onSurface }}>Scan QR code</text>
-          </view>
+          <Button
+            label="Scan QR code"
+            variant="filled"
+            onTap={onScanQR}
+            style={{ width: '100%' }}
+            colors={{ container: colors.surfaceContainer, label: colors.onSurface }}
+          />
         </view>
       </view>
       <scroll-view
         scroll-y
         className="DevLauncher__scrollList"
         style={{
-          flex: 1,
-          minHeight: 0,
+          flexGrow: 1,
+          flexShrink: 1,
+          flexBasis: '0px',
+          minHeight: '0px',
           width: '100%',
-          paddingLeft: '6px',
-          paddingRight: '6px',
-          paddingBottom: '16px',
           boxSizing: 'border-box',
         }}
       >
-        <CombinedServerList
-          theme={theme}
-          parseUrl={parseUrl}
-          discoveredServers={discoveredServers}
-          recentEntries={recentEntries}
-          recentReachability={recentReachability}
-          recentRowIconSrc={recentRowIconSrc}
-          openProject={openProject}
-          openProjectDirectly={openProjectDirectly}
-          setUrl={setUrl}
-          showIncompatibleModalForUrl={showIncompatibleModalForUrl}
-          removeRecentItem={removeRecentItem}
-        />
+        <view
+          style={{
+            width: '100%',
+            minWidth: '0px',
+            paddingLeft: '6px',
+            paddingRight: '6px',
+            paddingBottom: '16px',
+            boxSizing: 'border-box',
+          }}
+        >
+          <CombinedServerList
+            theme={theme}
+            parseUrl={parseUrl}
+            discoveredServers={discoveredServers}
+            recentEntries={recentEntries}
+            recentReachability={recentReachability}
+            recentRowIconSrc={recentRowIconSrc}
+            openProject={openProject}
+            openProjectDirectly={openProjectDirectly}
+            setUrl={setUrl}
+            showIncompatibleModalForUrl={showIncompatibleModalForUrl}
+            removeRecentItem={removeRecentItem}
+          />
+        </view>
       </scroll-view>
     </view>
   )
