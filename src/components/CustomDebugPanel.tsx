@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from '@lynx-js/react'
+import { Button } from '@tamer4lynx/tamer-app-shell'
 import type {
   MetricsTimingInfo,
   NodesRef,
@@ -707,36 +708,20 @@ export function CustomDebugPanel({
             marginTop: '24rpx',
           }}
         >
-          <view
-            bindtap={reload}
-            style={{
-              width: '100%',
-              backgroundColor: palette.primary ?? '#6200ee',
-              padding: '24rpx',
-              borderRadius: '12rpx',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
-            <text style={{ color: '#fff', fontSize: '30rpx', fontWeight: '600' }}>
-              Reload project bundle
-            </text>
-          </view>
-          <view
-            bindtap={onClose}
-            style={{
-              width: '100%',
-              padding: '20rpx',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
-            <text style={{ color: palette.onSurfaceVariant ?? '#888', fontSize: '28rpx' }}>
-              Close
-            </text>
-          </view>
+          <Button
+            label="Reload project bundle"
+            variant="filled"
+            onTap={reload}
+            style={{ width: '100%' }}
+            colors={{ container: palette.primary ?? '#6200ee', label: '#fff' }}
+          />
+          <Button
+            label="Close"
+            variant="text"
+            onTap={onClose}
+            style={{ width: '100%' }}
+            colors={{ label: palette.onSurfaceVariant ?? '#888' }}
+          />
         </view>
       </view>
     </view>

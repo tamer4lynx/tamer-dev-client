@@ -129,7 +129,7 @@ export default function RecentSwipeRow(props: {
           colors={{ container: surfaceColor }}
           style={{
             width: '100%',
-            minWidth: 0,
+            minWidth: '0px',
             padding: '14px 16px',
             boxSizing: 'border-box',
           }}

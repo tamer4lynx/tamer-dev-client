@@ -69,7 +69,7 @@ export default function ServerListRow(props: ServerListRowProps) {
       onTap={disableTap ? undefined : handleTap}
       style={{
         width: '100%',
-        minWidth: 0,
+        minWidth: '0px',
         padding: '14px 16px',
         boxSizing: 'border-box',
       }}

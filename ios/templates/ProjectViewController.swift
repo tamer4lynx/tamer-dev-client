@@ -17,6 +17,14 @@ private func tamer_project_disableLynxLongPressMenuIfAvailable() {
     env.setValue(false, forKey: "longPressMenuEnabled")
 }
 
+/// Shared with TamerNav stack spokes (`TamerNavHost.applySpokeBuilder`); required for one JS context group.
+private enum TamerNavLynxRuntime {
+    static let sharedGroup: LynxGroup = {
+        let option = LynxGroupOption()
+        return LynxGroup(name: "TamerNav", with: option)
+    }()
+}
+
 class ProjectViewController: UIViewController {
     private var lynxView: LynxView?
     private var devMenuView: LynxView?
@@ -115,7 +123,13 @@ class ProjectViewController: UIViewController {
     private func buildLynxView() -> LynxView {
         let size = fullscreenBounds().size
         let lv = LynxView { builder in
-            builder.config = LynxConfig(provider: DevTemplateProvider())
+            let provider = DevTemplateProvider()
+#if canImport(tamernavigation)
+            builder.group = TamerNavLynxRuntime.sharedGroup
+#endif
+            builder.config = LynxConfig(provider: provider)
+            builder.templateResourceFetcher = provider
+            builder.genericResourceFetcher = provider
             builder.screenSize = size
             builder.fontScale = 1.0
         }
@@ -209,7 +223,10 @@ class ProjectViewController: UIViewController {
     private func buildDevMenuView() -> LynxView {
         let size = fullscreenBounds().size
         let lv = LynxView { builder in
-            builder.config = LynxConfig(provider: DevTemplateProvider())
+            let provider = DevTemplateProvider()
+            builder.config = LynxConfig(provider: provider)
+            builder.templateResourceFetcher = provider
+            builder.genericResourceFetcher = provider
             builder.screenSize = size
             builder.fontScale = 1.0
         }

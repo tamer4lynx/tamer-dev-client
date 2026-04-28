@@ -8,6 +8,7 @@ import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import com.lynx.tasm.LynxBooleanOption
 import com.lynx.tasm.LynxView
 import com.lynx.tasm.LynxViewBuilder
 import {{PACKAGE_NAME}}.DevClientManager
@@ -105,7 +106,11 @@ class ProjectActivity : AppCompatActivity() {
 
     private fun buildLynxView(): LynxView {
         val viewBuilder = LynxViewBuilder()
-        viewBuilder.setTemplateProvider(TemplateProvider(this))
+        val provider = TemplateProvider(this)
+        viewBuilder.setTemplateProvider(provider)
+        viewBuilder.setEnableGenericResourceFetcher(LynxBooleanOption.TRUE)
+        viewBuilder.setTemplateResourceFetcher(provider.templateResourceFetcher)
+        viewBuilder.setGenericResourceFetcher(provider.genericResourceFetcher)
         GeneratedLynxExtensions.configureViewBuilder(viewBuilder)
         return viewBuilder.build(this)
     }

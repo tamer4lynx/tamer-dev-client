@@ -63,7 +63,11 @@ class DevLauncherViewController: UIViewController {
     private func setupLynxView() {
         let size = fullscreenBounds().size
         let lv = LynxView { builder in
-            builder.config = LynxConfig(provider: DevTemplateProvider())
+            let provider = DevTemplateProvider()
+            builder.enableGenericResourceFetcher = .true
+            builder.config = LynxConfig(provider: provider)
+            builder.templateResourceFetcher = provider
+            builder.genericResourceFetcher = provider
             builder.screenSize = size
             builder.fontScale = 1.0
         }
