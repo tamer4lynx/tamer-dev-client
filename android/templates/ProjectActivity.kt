@@ -16,6 +16,7 @@ import {{PACKAGE_NAME}}.generated.GeneratedLynxExtensions
 import {{PACKAGE_NAME}}.generated.GeneratedActivityLifecycle
 import com.nanofuxion.tamerdevclient.DevClientDebugPanel
 import com.nanofuxion.tamerdevclient.DevClientModule
+import com.nanofuxion.tamernavigation.stack.TamerNavHost
 
 class ProjectActivity : AppCompatActivity() {
     private var lynxView: LynxView? = null
@@ -37,6 +38,7 @@ class ProjectActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         com.nanofuxion.tamerdevclient.LynxDevToolBootstrap.bootstrapDevToolForProjectHost(this)
         GeneratedLynxExtensions.register(this)
+        configureTamerNavSpokeBuilder()
         GeneratedActivityLifecycle.onCreate(intent)
         WindowCompat.setDecorFitsSystemWindows(window, false)
         WindowInsetsControllerCompat(window, window.decorView).isAppearanceLightStatusBars = true
@@ -106,6 +108,7 @@ class ProjectActivity : AppCompatActivity() {
 
     private fun buildLynxView(): LynxView {
         val viewBuilder = LynxViewBuilder()
+        viewBuilder.setLynxGroup(TamerNavLynxRuntime.group)
         val provider = TemplateProvider(this)
         viewBuilder.setTemplateProvider(provider)
         viewBuilder.setEnableGenericResourceFetcher(LynxBooleanOption.TRUE)
@@ -113,5 +116,19 @@ class ProjectActivity : AppCompatActivity() {
         viewBuilder.setGenericResourceFetcher(provider.genericResourceFetcher)
         GeneratedLynxExtensions.configureViewBuilder(viewBuilder)
         return viewBuilder.build(this)
+    }
+
+    private fun configureTamerNavSpokeBuilder() {
+        TamerNavHost.spokeBuilder = { ctx ->
+            val viewBuilder = LynxViewBuilder()
+            viewBuilder.setLynxGroup(TamerNavLynxRuntime.group)
+            val provider = TemplateProvider(ctx)
+            viewBuilder.setTemplateProvider(provider)
+            viewBuilder.setEnableGenericResourceFetcher(LynxBooleanOption.TRUE)
+            viewBuilder.setTemplateResourceFetcher(provider.templateResourceFetcher)
+            viewBuilder.setGenericResourceFetcher(provider.genericResourceFetcher)
+            GeneratedLynxExtensions.configureViewBuilder(viewBuilder)
+            viewBuilder.build(ctx)
+        }
     }
 }

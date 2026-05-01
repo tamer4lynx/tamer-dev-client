@@ -127,6 +127,7 @@ class ProjectViewController: UIViewController {
 #if canImport(tamernavigation)
             builder.group = TamerNavLynxRuntime.sharedGroup
 #endif
+            builder.enableGenericResourceFetcher = .true
             builder.config = LynxConfig(provider: provider)
             builder.templateResourceFetcher = provider
             builder.genericResourceFetcher = provider
@@ -224,6 +225,7 @@ class ProjectViewController: UIViewController {
         let size = fullscreenBounds().size
         let lv = LynxView { builder in
             let provider = DevTemplateProvider()
+            builder.enableGenericResourceFetcher = .true
             builder.config = LynxConfig(provider: provider)
             builder.templateResourceFetcher = provider
             builder.genericResourceFetcher = provider
