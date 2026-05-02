@@ -121,6 +121,23 @@ public final class DevClientModule: NSObject, LynxModule {
     // MARK: - Static Attachment Points (set by DevLauncherViewController)
 
     public static weak var shared: DevClientModule?
+    private static weak var attachedLynxView: LynxView?
+
+    private static let instancesLock = NSLock()
+    private static let instances = NSHashTable<DevClientModule>.weakObjects()
+
+    private static func registerInstance(_ instance: DevClientModule) {
+        instancesLock.lock()
+        instances.add(instance)
+        instancesLock.unlock()
+    }
+
+    private static func liveInstances() -> [DevClientModule] {
+        instancesLock.lock()
+        let all = instances.allObjects
+        instancesLock.unlock()
+        return all
+    }
 
     private static let supportedModulesLock = NSLock()
     private static var supportedModuleClassNamesInternal = Set<String>()
@@ -137,6 +154,10 @@ public final class DevClientModule: NSObject, LynxModule {
         supportedModulesLock.lock()
         supportedModuleClassNamesInternal = Set(names.filter { !$0.isEmpty })
         supportedModulesLock.unlock()
+    }
+
+    public static func attachLynxView(_ view: LynxView?) {
+        attachedLynxView = view
     }
 
     /// Emits `devclient:shakeDetected` on the Lynx global event bus (e.g. from host `motionEnded` shake).
@@ -291,12 +312,14 @@ public final class DevClientModule: NSObject, LynxModule {
         super.init()
         lynxContext = param as? LynxContext
         DevClientModule.shared = self
+        DevClientModule.registerInstance(self)
         DevClientModule.ensurePerfSamplerStarted()
     }
 
     @objc public override init() {
         super.init()
         DevClientModule.shared = self
+        DevClientModule.registerInstance(self)
         DevClientModule.ensurePerfSamplerStarted()
     }
 
@@ -310,7 +333,12 @@ public final class DevClientModule: NSObject, LynxModule {
         perfSamplerWired = true
         PerfSampler.shared.onSample = { sample in
             DispatchQueue.main.async {
-                DevClientModule.shared?.emitPerfSample(sample)
+                let params: [[String: Any]] = [sample.toDictionary()]
+                if let view = DevClientModule.attachedLynxView {
+                    view.sendGlobalEvent("devclient:perfSample", withParams: params)
+                } else {
+                    DevClientModule.liveInstances().forEach { $0.emitPerfSample(sample) }
+                }
             }
         }
         PerfSampler.shared.ensureStarted()
@@ -319,8 +347,6 @@ public final class DevClientModule: NSObject, LynxModule {
     private func emitPerfSample(_ sample: PerfSample) {
         let params: [[String: Any]] = [sample.toDictionary()]
         if let ctx = lynxContext {
-            ctx.sendGlobalEvent("devclient:perfSample", withParams: params)
-        } else if let ctx = DevClientModule.shared?.lynxContext {
             ctx.sendGlobalEvent("devclient:perfSample", withParams: params)
         }
     }

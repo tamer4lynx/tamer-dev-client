@@ -9,6 +9,7 @@ import com.lynx.tasm.LynxGroup
 object TamerNavLynxRuntime {
     val group: LynxGroup = LynxGroup.LynxGroupBuilder()
         .setGroupName("TamerNav")
-        .setID("tamer-nav-shared")
+        .setID(LynxGroup.SINGNLE_GROUP)
+        .setEnableJSGroupThread(true)
         .build()
 }

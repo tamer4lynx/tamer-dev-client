@@ -20,8 +20,6 @@ class DebugPanelActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        LynxDevToolBootstrap.bootstrapDevToolForProjectHost(this)
-        registerGeneratedLynxExtensions()
         WindowCompat.setDecorFitsSystemWindows(window, false)
         WindowInsetsControllerCompat(window, window.decorView).isAppearanceLightStatusBars = true
 
@@ -31,7 +29,6 @@ class DebugPanelActivity : AppCompatActivity() {
         lynxView = buildLynxView()
         setContentView(lynxView)
         DevClientModule.attachLynxView(lynxView)
-        notifyGeneratedHostViewChanged(lynxView)
         lynxView?.renderTemplateUrl(DevClientDebugPanel.TAMER_DEBUG_BUNDLE, "")
     }
 
@@ -39,7 +36,6 @@ class DebugPanelActivity : AppCompatActivity() {
         DevClientDebugPanel.trackPanelActivity(null)
         DevClientModule.attachHostActivity(null)
         DevClientModule.attachLynxView(null)
-        notifyGeneratedHostViewChanged(null)
         lynxView?.destroy()
         lynxView = null
         super.onDestroy()
@@ -65,34 +61,7 @@ class DebugPanelActivity : AppCompatActivity() {
         } catch (e: Exception) {
             Log.e(TAG, "Could not set TemplateProvider", e)
         }
-        try {
-            val genCls = Class.forName("$pkg.generated.GeneratedLynxExtensions")
-            val instance = genCls.getField("INSTANCE").get(null)
-            genCls.getMethod("configureViewBuilder", LynxViewBuilder::class.java).invoke(instance, viewBuilder)
-        } catch (e: Exception) {
-            Log.e(TAG, "configureViewBuilder failed", e)
-        }
         viewBuilder.registerModule("DevClientModule", DevClientModule::class.java)
         return viewBuilder.build(this)
-    }
-
-    private fun registerGeneratedLynxExtensions() {
-        try {
-            val registerCls = Class.forName("$packageName.generated.GeneratedLynxExtensions")
-            val instance = registerCls.getField("INSTANCE").get(null)
-            registerCls.getMethod("register", android.content.Context::class.java).invoke(instance, this)
-        } catch (e: Exception) {
-            Log.e(TAG, "GeneratedLynxExtensions.register failed", e)
-        }
-    }
-
-    private fun notifyGeneratedHostViewChanged(view: View?) {
-        try {
-            val registerCls = Class.forName("$packageName.generated.GeneratedLynxExtensions")
-            val instance = registerCls.getField("INSTANCE").get(null)
-            registerCls.getMethod("onHostViewChanged", View::class.java).invoke(instance, view)
-        } catch (e: Exception) {
-            Log.e(TAG, "GeneratedLynxExtensions.onHostViewChanged failed", e)
-        }
     }
 }

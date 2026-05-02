@@ -119,6 +119,7 @@ class ProjectActivity : AppCompatActivity() {
     }
 
     private fun configureTamerNavSpokeBuilder() {
+        TamerNavHost.configureSharedLynxGroup(TamerNavLynxRuntime.group)
         TamerNavHost.spokeBuilder = { ctx ->
             val viewBuilder = LynxViewBuilder()
             viewBuilder.setLynxGroup(TamerNavLynxRuntime.group)
