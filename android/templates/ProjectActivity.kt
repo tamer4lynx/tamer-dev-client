@@ -16,6 +16,7 @@ import {{PACKAGE_NAME}}.generated.GeneratedLynxExtensions
 import {{PACKAGE_NAME}}.generated.GeneratedActivityLifecycle
 import com.nanofuxion.tamerdevclient.DevClientDebugPanel
 import com.nanofuxion.tamerdevclient.DevClientModule
+import com.nanofuxion.tamerinsets.TamerInsetsModule
 import com.nanofuxion.tamernavigation.stack.TamerNavHost
 
 class ProjectActivity : AppCompatActivity() {
@@ -46,7 +47,7 @@ class ProjectActivity : AppCompatActivity() {
         setContentView(lynxView)
         GeneratedActivityLifecycle.onViewAttached(lynxView)
         GeneratedLynxExtensions.onHostViewChanged(lynxView)
-        lynxView?.renderTemplateUrl("main.lynx.bundle", DevClientModule.getProjectInitDataJson(this))
+        lynxView?.renderTemplateUrl("main.lynx.bundle", projectInitDataWithInsetsSnapshot(this))
         DevClientModule.attachHostActivity(this)
         DevClientModule.attachLynxView(lynxView)
         DevClientModule.attachReloadProjectLauncher { reloadProjectView() }
@@ -66,7 +67,7 @@ class ProjectActivity : AppCompatActivity() {
         setContentView(nextView)
         GeneratedActivityLifecycle.onViewAttached(nextView)
         GeneratedLynxExtensions.onHostViewChanged(nextView)
-        nextView.renderTemplateUrl("main.lynx.bundle", DevClientModule.getProjectInitDataJson(this))
+        nextView.renderTemplateUrl("main.lynx.bundle", projectInitDataWithInsetsSnapshot(this))
         DevClientModule.attachLynxView(nextView)
         GeneratedActivityLifecycle.onCreateDelayed(handler)
     }
@@ -104,6 +105,24 @@ class ProjectActivity : AppCompatActivity() {
         lynxView = null
         devClientManager?.disconnect()
         super.onDestroy()
+    }
+
+    /** Merges the cached safe-area insets into project init data so the JS bundle's
+     * first React render reads real insets via `lynx.__initData.__tamerInsetsSnapshot`
+     * instead of starting at zero and snapping when `tamer-insets:change` lands. */
+    private fun projectInitDataWithInsetsSnapshot(ctx: android.content.Context): String {
+        val baseJson = DevClientModule.getProjectInitDataJson(ctx)
+        val snapshot = TamerInsetsModule.currentInsetsSnapshotJson() ?: return baseJson
+        val trimmed = baseJson.trim()
+        val injection = "\"__tamerInsetsSnapshot\":$snapshot"
+        return when {
+            trimmed.isEmpty() || trimmed == "{}" -> "{$injection}"
+            trimmed.startsWith("{") && trimmed.endsWith("}") -> {
+                val inner = trimmed.substring(1, trimmed.length - 1).trim()
+                if (inner.isEmpty()) "{$injection}" else "{$injection,$inner}"
+            }
+            else -> baseJson
+        }
     }
 
     private fun buildLynxView(): LynxView {

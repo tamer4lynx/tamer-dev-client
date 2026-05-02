@@ -208,7 +208,7 @@ class ProjectViewController: UIViewController {
         pendingInitialLoadWorkItem = nil
         applyFullscreenLayout(to: lynxView)
         NSLog("[ProjectVC] initial project load reason=%@ bounds=%@ safe=%@", reason, NSCoder.string(for: bounds), NSCoder.string(for: view.safeAreaInsets))
-        lynxView.loadTemplate(fromURL: "main.lynx.bundle", initData: DevServerPrefs.getProjectInitTemplateData())
+        lynxView.loadTemplate(fromURL: "main.lynx.bundle", initData: Self.projectInitDataWithInsetsSnapshot())
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self, weak lynxView] in
             guard let self, let lynxView else { return }
             self.logViewport("project post-load", lynxView: lynxView)
@@ -296,6 +296,30 @@ class ProjectViewController: UIViewController {
     private func disableAutomaticInsetAdjustment() {
         guard let lynxView else { return }
         disableAutomaticInsetAdjustment(in: lynxView)
+    }
+
+    /// Merges the cached safe-area insets into the persisted project init data so the
+    /// JS bundle's first React render reads real insets via `lynx.__initData.__tamerInsetsSnapshot`
+    /// — eliminates the AppBar height bounce that otherwise happens when `useInsets()`
+    /// returns zero on frame 0 and snaps after `tamer-insets:change` lands ~150 ms later.
+    private static func projectInitDataWithInsetsSnapshot() -> LynxTemplateData {
+        let baseJson = DevServerPrefs.getProjectInitDataJson()
+        guard let snapshot = TamerInsetsModule.currentInsetsSnapshotJson() else {
+            return LynxTemplateData(json: baseJson)
+        }
+        let trimmed = baseJson.trimmingCharacters(in: .whitespacesAndNewlines)
+        let injection = "\"__tamerInsetsSnapshot\":\(snapshot)"
+        let merged: String
+        if trimmed.isEmpty || trimmed == "{}" {
+            merged = "{\(injection)}"
+        } else if trimmed.hasPrefix("{") && trimmed.hasSuffix("}") {
+            let inner = String(trimmed.dropFirst().dropLast())
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            merged = inner.isEmpty ? "{\(injection)}" : "{\(injection),\(inner)}"
+        } else {
+            return LynxTemplateData(json: baseJson)
+        }
+        return LynxTemplateData(json: merged)
     }
 
     private func disableAutomaticInsetAdjustment(in view: UIView) {
