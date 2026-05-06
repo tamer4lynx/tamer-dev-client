@@ -19,11 +19,46 @@ private func tamer_project_disableLynxLongPressMenuIfAvailable() {
 
 /// Shared with TamerNav stack spokes (`TamerNavHost.applySpokeBuilder`); required for one JS context group.
 private enum TamerNavLynxRuntime {
+    static let _warnOnce: Void = {
+        NSLog("[TamerHeap] WARNING: Lynx does not share JS heap across LynxViews; module-singleton stores re-init per spoke. Use TamerStateSyncProvider from @tamer4lynx/tamer-router for cross-spoke continuity. See tamer-navigation README.")
+    }()
+
     static let sharedGroup: LynxGroup = {
         let option = LynxGroupOption()
         option.enableJSGroupThread = true
         return LynxGroup(name: "TamerNav", with: option)
     }()
+
+    private static var viewGroups: [String: LynxViewGroup] = [:]
+
+    static func viewGroup(src: String, provider: DevTemplateProvider) -> LynxViewGroup {
+        let key = src.isEmpty ? "main.lynx.bundle" : src
+        if let existing = viewGroups[key] {
+            return existing
+        }
+        let group = LynxViewGroup(url: key, templateFetcher: provider)
+        group.group = sharedGroup
+        group.enableGenericResourceFetcher = .true
+        group.config = LynxConfig(provider: provider)
+        group.templateResourceFetcher = provider
+        group.genericResourceFetcher = provider
+        viewGroups[key] = group
+        return group
+    }
+
+    static func configureBuilder(_ builder: LynxViewBuilder, src: String, provider: DevTemplateProvider) {
+        _ = _warnOnce
+        let vg = viewGroup(src: src, provider: provider)
+        builder.lynxViewGroup = vg
+        builder.group = sharedGroup
+        builder.enableGenericResourceFetcher = .true
+        builder.config = LynxConfig(provider: provider)
+        builder.templateResourceFetcher = provider
+        builder.genericResourceFetcher = provider
+        let groupPtr = Int(bitPattern: Unmanaged.passUnretained(sharedGroup).toOpaque())
+        let vgPtr = Int(bitPattern: Unmanaged.passUnretained(vg).toOpaque())
+        NSLog("[TamerHeap] configure src=\(src) group=0x\(String(groupPtr, radix: 16)) viewGroup=0x\(String(vgPtr, radix: 16))")
+    }
 }
 
 class ProjectViewController: UIViewController {
@@ -89,6 +124,7 @@ class ProjectViewController: UIViewController {
 
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
+        DevClientModule.setProjectActive(true)
         triggerInitialProjectLoadIfNeeded(reason: "viewDidAppear")
     }
 
@@ -146,6 +182,15 @@ class ProjectViewController: UIViewController {
         NSLog("[ProjectVC] setupLynxView devUrl=%@", DevServerPrefs.getUrl() ?? "")
 #if canImport(tamernavigation)
         TamerNavHost.configureSharedGroup(TamerNavLynxRuntime.sharedGroup)
+        TamerNavHost.configureSpokeBuilder = { builder, src in
+            _ = src
+            let provider = DevTemplateProvider()
+            builder.group = TamerNavLynxRuntime.sharedGroup
+            builder.enableGenericResourceFetcher = .true
+            builder.config = LynxConfig(provider: provider)
+            builder.templateResourceFetcher = provider
+            builder.genericResourceFetcher = provider
+        }
 #endif
         let lv = buildLynxView()
         lv.backgroundColor = .black
@@ -372,6 +417,7 @@ class ProjectViewController: UIViewController {
         pendingInitialLoadWorkItem?.cancel()
         pendingInitialLoadWorkItem = nil
         DevClientModule.attachLynxView(nil)
+        DevClientModule.setProjectActive(false)
         onDismiss?()
     }
 }

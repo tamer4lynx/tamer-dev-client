@@ -65,6 +65,7 @@ class DevClientModule(context: Context) : LynxModule(context) {
             if (activity != null) {
                 try {
                     PerfSampler.ensureStarted(activity.applicationContext)
+                    PerfSampler.setActive(true)
                     PerfSampler.setListener { sample ->
                         val inst = instance
                         if (inst != null) {
@@ -86,7 +87,7 @@ class DevClientModule(context: Context) : LynxModule(context) {
             map.putDouble("t", sample.t.toDouble())
             map.putDouble("frametimeMs", sample.frametimeMs)
             map.putDouble("cpuPct", sample.cpuPct)
-            map.putDouble("gpuPct", sample.gpuPct)
+            map.putInt("avgFps", sample.avgFps)
             val params = JavaOnlyArray()
             params.pushMap(map)
             return params
@@ -94,6 +95,12 @@ class DevClientModule(context: Context) : LynxModule(context) {
 
         fun attachLynxView(view: LynxView?) {
             lynxViewRef = view
+        }
+
+        /// Gate sampler to ProjectActivity foreground (called from onResume/onPause).
+        @JvmStatic
+        fun setProjectActive(active: Boolean) {
+            PerfSampler.setActive(active)
         }
 
         fun attachCameraPermissionRequester(requester: (Runnable) -> Unit) {
@@ -308,7 +315,7 @@ class DevClientModule(context: Context) : LynxModule(context) {
             map.putDouble("t", sample.t.toDouble())
             map.putDouble("frametimeMs", sample.frametimeMs)
             map.putDouble("cpuPct", sample.cpuPct)
-            map.putDouble("gpuPct", sample.gpuPct)
+            map.putInt("avgFps", sample.avgFps)
             arr.pushMap(map)
         }
         callback.invoke(arr)

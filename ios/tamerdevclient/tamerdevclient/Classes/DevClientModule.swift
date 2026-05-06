@@ -160,6 +160,12 @@ public final class DevClientModule: NSObject, LynxModule {
         attachedLynxView = view
     }
 
+    /// Gate the perf sampler to project VC lifecycle. Called from ProjectViewController.viewDidAppear/viewDidDisappear
+    /// so CPU + frametime sampling only runs while a project session is foreground.
+    @objc public static func setProjectActive(_ active: Bool) {
+        PerfSampler.shared.setActive(active)
+    }
+
     /// Emits `devclient:shakeDetected` on the Lynx global event bus (e.g. from host `motionEnded` shake).
     public static func emitShakeDetected() {
         shared?.emitShakeEvent()

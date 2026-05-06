@@ -5,7 +5,6 @@ import android.os.Handler
 import android.os.HandlerThread
 import android.os.SystemClock
 import android.view.Choreographer
-import java.io.File
 import java.io.RandomAccessFile
 
 object PerfSampler {
@@ -13,27 +12,36 @@ object PerfSampler {
         val t: Long,
         val frametimeMs: Double,
         val cpuPct: Double,
-        val gpuPct: Double,
+        val avgFps: Int,
     )
 
     private const val SAMPLE_INTERVAL_MS = 1000L
     private const val RING_CAPACITY = 120
     private const val CLK_TCK_FALLBACK = 100L
 
-    @Volatile private var started = false
+    @Volatile private var wired = false
+    @Volatile private var active = false
+    @Volatile private var tickScheduled = false
     private var samplerThread: HandlerThread? = null
     private var handler: Handler? = null
+    private var appContext: Context? = null
 
     private var lastFrameTimeNanos: Long = 0L
-    @Volatile private var maxFrameDeltaNs: Long = 0L
+    @Volatile private var frameCount: Int = 0
+    @Volatile private var totalFrameDeltaNs: Long = 0L
 
     private val frameCallback = object : Choreographer.FrameCallback {
         override fun doFrame(frameTimeNanos: Long) {
+            if (!active) {
+                lastFrameTimeNanos = 0L
+                return
+            }
             val last = lastFrameTimeNanos
             if (last != 0L) {
                 val delta = frameTimeNanos - last
-                if (delta > 0 && delta > maxFrameDeltaNs) {
-                    maxFrameDeltaNs = delta
+                if (delta > 0) {
+                    frameCount++
+                    totalFrameDeltaNs += delta
                 }
             }
             lastFrameTimeNanos = frameTimeNanos
@@ -55,23 +63,45 @@ object PerfSampler {
     @Volatile private var listener: ((Sample) -> Unit)? = null
 
     fun ensureStarted(context: Context) {
-        if (started) return
+        if (wired) return
         synchronized(this) {
-            if (started) return
-            started = true
+            if (wired) return
+            wired = true
+            appContext = context.applicationContext
             val thread = HandlerThread("TamerPerfSampler")
             thread.start()
             samplerThread = thread
             handler = Handler(thread.looper)
+        }
+    }
 
-            Handler(context.mainLooper).post {
-                try {
-                    Choreographer.getInstance().postFrameCallback(frameCallback)
-                } catch (_: Throwable) {
+    /// Gate sampling to project Activity foreground.
+    fun setActive(shouldBeActive: Boolean) {
+        synchronized(this) {
+            if (active == shouldBeActive) return
+            active = shouldBeActive
+            if (shouldBeActive) {
+                lastFrameTimeNanos = 0L
+                frameCount = 0
+                totalFrameDeltaNs = 0L
+                lastCpuTicks = -1L
+                lastCpuWallMs = -1L
+                val ctx = appContext
+                if (ctx != null) {
+                    Handler(ctx.mainLooper).post {
+                        try {
+                            Choreographer.getInstance().postFrameCallback(frameCallback)
+                        } catch (_: Throwable) {
+                        }
+                    }
                 }
+                if (!tickScheduled) {
+                    tickScheduled = true
+                    scheduleTick()
+                }
+            } else {
+                synchronized(ringLock) { ring.clear() }
             }
-
-            scheduleTick()
         }
     }
 
@@ -90,15 +120,18 @@ object PerfSampler {
     }
 
     private fun tick() {
+        if (!active) {
+            tickScheduled = false
+            return
+        }
         try {
-            val frametimeMs = consumeMaxFrameDeltaMs()
+            val (fps, avgMs) = consumeFrameStats()
             val cpuPct = readCpuPercent()
-            val gpuPct = readGpuPercent()
             val s = Sample(
                 t = System.currentTimeMillis(),
-                frametimeMs = frametimeMs,
+                frametimeMs = avgMs,
                 cpuPct = cpuPct,
-                gpuPct = gpuPct,
+                avgFps = fps,
             )
             synchronized(ringLock) {
                 if (ring.size >= RING_CAPACITY) ring.removeFirst()
@@ -107,15 +140,21 @@ object PerfSampler {
             listener?.invoke(s)
         } catch (_: Throwable) {
         } finally {
-            scheduleTick()
+            if (active) {
+                scheduleTick()
+            } else {
+                tickScheduled = false
+            }
         }
     }
 
-    private fun consumeMaxFrameDeltaMs(): Double {
-        val maxNs = maxFrameDeltaNs
-        maxFrameDeltaNs = 0L
-        if (maxNs <= 0) return 0.0
-        return maxNs / 1_000_000.0
+    private fun consumeFrameStats(): Pair<Int, Double> {
+        val count = frameCount
+        val totalNs = totalFrameDeltaNs
+        frameCount = 0
+        totalFrameDeltaNs = 0L
+        val avgMs = if (count > 0) totalNs / 1_000_000.0 / count else 0.0
+        return Pair(count, avgMs)
     }
 
     private fun readCpuPercent(): Double {
@@ -163,73 +202,5 @@ object PerfSampler {
         } catch (_: Throwable) {
             CLK_TCK_FALLBACK
         }
-    }
-
-    private var gpuProbe: GpuProbe? = null
-    @Volatile private var gpuProbeResolved: Boolean = false
-
-    private sealed class GpuProbe {
-        abstract fun read(): Double
-        class Adreno3dPercent(val path: String) : GpuProbe() {
-            override fun read(): Double {
-                return readFirstDouble(path)?.coerceIn(0.0, 100.0) ?: -1.0
-            }
-        }
-        class AdrenoBusyFrac(val path: String) : GpuProbe() {
-            override fun read(): Double {
-                return try {
-                    val txt = File(path).readText().trim()
-                    val tokens = txt.split(Regex("\\s+"))
-                    if (tokens.size < 2) return -1.0
-                    val busy = tokens[0].toDoubleOrNull() ?: return -1.0
-                    val total = tokens[1].toDoubleOrNull() ?: return -1.0
-                    if (total <= 0) return -1.0
-                    ((busy / total) * 100.0).coerceIn(0.0, 100.0)
-                } catch (_: Throwable) { -1.0 }
-            }
-        }
-        class MaliUtilization(val path: String) : GpuProbe() {
-            override fun read(): Double {
-                return readFirstDouble(path)?.coerceIn(0.0, 100.0) ?: -1.0
-            }
-        }
-    }
-
-    private fun readFirstDouble(path: String): Double? {
-        return try {
-            val txt = File(path).readText().trim()
-            val first = txt.split(Regex("\\s+")).firstOrNull() ?: return null
-            first.toDoubleOrNull()
-        } catch (_: Throwable) {
-            null
-        }
-    }
-
-    private fun resolveGpuProbe(): GpuProbe? {
-        val adreno = "/sys/kernel/debug/kgsl/kgsl-3d0/gpu_busy_percentage"
-        if (File(adreno).canRead()) return GpuProbe.Adreno3dPercent(adreno)
-        val adrenoBusy = "/sys/class/kgsl/kgsl-3d0/gpubusy"
-        if (File(adrenoBusy).canRead()) return GpuProbe.AdrenoBusyFrac(adrenoBusy)
-        try {
-            val platform = File("/sys/devices/platform")
-            if (platform.isDirectory) {
-                val mali = platform.listFiles()?.firstOrNull { it.name.endsWith(".mali") }
-                if (mali != null) {
-                    val util = File(mali, "utilization")
-                    if (util.canRead()) return GpuProbe.MaliUtilization(util.absolutePath)
-                }
-            }
-        } catch (_: Throwable) {
-        }
-        return null
-    }
-
-    private fun readGpuPercent(): Double {
-        if (!gpuProbeResolved) {
-            gpuProbe = resolveGpuProbe()
-            gpuProbeResolved = true
-        }
-        val probe = gpuProbe ?: return -1.0
-        return probe.read()
     }
 }

@@ -6,13 +6,13 @@ import Darwin.Mach
     @objc public let t: Double
     @objc public let frametimeMs: Double
     @objc public let cpuPct: Double
-    @objc public let gpuPct: Double
+    @objc public let avgFps: Int
 
-    @objc public init(t: Double, frametimeMs: Double, cpuPct: Double, gpuPct: Double) {
+    @objc public init(t: Double, frametimeMs: Double, cpuPct: Double, avgFps: Int) {
         self.t = t
         self.frametimeMs = frametimeMs
         self.cpuPct = cpuPct
-        self.gpuPct = gpuPct
+        self.avgFps = avgFps
     }
 
     @objc public func toDictionary() -> [String: Any] {
@@ -20,7 +20,7 @@ import Darwin.Mach
             "t": t,
             "frametimeMs": frametimeMs,
             "cpuPct": cpuPct,
-            "gpuPct": gpuPct,
+            "avgFps": avgFps,
         ]
     }
 }
@@ -31,13 +31,16 @@ public final class PerfSampler: NSObject {
     private let sampleIntervalMs: Int = 1000
     private let ringCapacity: Int = 120
 
-    private var started: Bool = false
+    private var wired: Bool = false
+    private var active: Bool = false
+    private let stateLock = NSLock()
     private let ringQueue = DispatchQueue(label: "tamer.perf.sampler.ring")
     private var ring: [PerfSample] = []
 
     private var displayLink: CADisplayLink?
     private var lastFrameTimestamp: CFTimeInterval = 0
-    private var maxFrameDeltaMs: Double = 0
+    private var frameCount: Int = 0
+    private var totalFrameDeltaMs: Double = 0
 
     private var timerSource: DispatchSourceTimer?
     private let timerQueue = DispatchQueue(label: "tamer.perf.sampler.timer")
@@ -47,11 +50,31 @@ public final class PerfSampler: NSObject {
     public var onSample: ((PerfSample) -> Void)?
 
     @objc public func ensureStarted() {
-        if started { return }
-        started = true
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        wired = true
+    }
 
+    /// Gate sampling to project view controller / activity foreground.
+    /// Inactive: no displayLink callbacks, no timer ticks, ring cleared.
+    @objc public func setActive(_ shouldBeActive: Bool) {
+        stateLock.lock()
+        let wasActive = active
+        active = shouldBeActive
+        stateLock.unlock()
+        if shouldBeActive && !wasActive {
+            startInternal()
+        } else if !shouldBeActive && wasActive {
+            stopInternal()
+        }
+    }
+
+    private func startInternal() {
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
+            self.lastFrameTimestamp = 0
+            self.frameCount = 0
+            self.totalFrameDeltaMs = 0
             let link = CADisplayLink(target: self, selector: #selector(self.onFrame(_:)))
             link.add(to: .main, forMode: .common)
             self.displayLink = link
@@ -65,6 +88,22 @@ public final class PerfSampler: NSObject {
         }
         t.resume()
         timerSource = t
+    }
+
+    private func stopInternal() {
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            self.displayLink?.invalidate()
+            self.displayLink = nil
+            self.lastFrameTimestamp = 0
+            self.frameCount = 0
+            self.totalFrameDeltaMs = 0
+        }
+        timerSource?.cancel()
+        timerSource = nil
+        ringQueue.sync {
+            ring.removeAll(keepingCapacity: true)
+        }
     }
 
     @objc public func snapshot() -> [PerfSample] {
@@ -84,22 +123,20 @@ public final class PerfSampler: NSObject {
         let last = lastFrameTimestamp
         if last != 0 {
             let deltaMs = (ts - last) * 1000.0
-            if deltaMs > maxFrameDeltaMs {
-                maxFrameDeltaMs = deltaMs
-            }
+            frameCount += 1
+            totalFrameDeltaMs += deltaMs
         }
         lastFrameTimestamp = ts
     }
 
     private func tick() {
-        let frametimeMs = consumeMaxFrameDeltaMs()
+        let (fps, avgMs) = consumeFrameStats()
         let cpuPct = readCpuPercent()
-        let gpuPct: Double = -1.0
         let sample = PerfSample(
             t: Date().timeIntervalSince1970 * 1000.0,
-            frametimeMs: frametimeMs,
+            frametimeMs: avgMs,
             cpuPct: cpuPct,
-            gpuPct: gpuPct
+            avgFps: fps
         )
         ringQueue.sync {
             if ring.count >= ringCapacity {
@@ -110,10 +147,12 @@ public final class PerfSampler: NSObject {
         onSample?(sample)
     }
 
-    private func consumeMaxFrameDeltaMs() -> Double {
-        let v = maxFrameDeltaMs
-        maxFrameDeltaMs = 0
-        return v > 0 ? v : 0
+    private func consumeFrameStats() -> (Int, Double) {
+        let count = frameCount
+        let avg = count > 0 ? totalFrameDeltaMs / Double(count) : 0
+        frameCount = 0
+        totalFrameDeltaMs = 0
+        return (count, avg)
     }
 
     private func readCpuPercent() -> Double {

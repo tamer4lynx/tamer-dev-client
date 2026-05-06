@@ -12,7 +12,6 @@ import {
   resolveTheme,
   type DevLauncherTheme,
 } from '../devLauncherTheme.js'
-import { ensureNetworkDebugInstalled, getNetworkDebugEntries } from '../networkDebug.js'
 import { fetchIconAsDataUrl, getStoredIconDataUrl, rememberIconCacheKey } from '../recentIconCache.js'
 import type { TimeValuePoint } from '../perfLineGraph.js'
 
@@ -26,7 +25,11 @@ declare const lynx: {
   getJSModule?: (name: string) => GlobalEventEmitter | undefined
 }
 
-type PerfSample = { t: number; frametimeMs: number; cpuPct: number; gpuPct: number }
+type PerfSample = { t: number; frametimeMs: number; cpuPct: number; avgFps?: number }
+
+const FRAMETIME_BLACK = '#000000'
+const FRAMETIME_ORANGE = '#f9ab00'
+const FRAMETIME_RED = '#ea4335'
 
 const PERF_MAX_POINTS = 120
 
@@ -214,7 +217,186 @@ function PerfContributionGrid({
                     marginTop: cellIndex === 0 ? '0px' : `${GRID_GAP_PX}px`,
                     borderRadius: '2px',
                     backgroundColor: barColor,
-                    opacity: opacity > 0 ? opacity : 0.12,
+                    opacity: opacity > 0 ? opacity : 0.05,
+                  }}
+                />
+              ))}
+            </view>
+          )
+        })}
+      </view>
+    </view>
+  )
+}
+
+function FrametimeBandedGrid({
+  points,
+  baseColor,
+}: {
+  points: TimeValuePoint[]
+  baseColor: string
+}) {
+  const gridRef = useRef<NodesRef | null>(null)
+  const [gridLayout, setGridLayout] = useState<{ width: number; height: number } | null>(null)
+
+  useEffect(() => {
+    'background only'
+    const measure = () => {
+      const ref = gridRef.current
+      if (!ref) return
+      ref
+        .invoke({
+          method: 'boundingClientRect',
+          success: (res) => {
+            if (!res || typeof res !== 'object') return
+            const width = typeof (res as { width?: unknown }).width === 'number'
+              ? (res as { width: number }).width
+              : 0
+            const height = typeof (res as { height?: unknown }).height === 'number'
+              ? (res as { height: number }).height
+              : 0
+            if (width > 0 && height > 0) {
+              setGridLayout((prev) => (
+                prev != null && prev.width === width && prev.height === height
+                  ? prev
+                  : { width, height }
+              ))
+            }
+          },
+        })
+        .exec()
+    }
+
+    measure()
+    const immediate = setTimeout(measure, 0)
+    const delayed = setTimeout(measure, 80)
+    return () => {
+      clearTimeout(immediate)
+      clearTimeout(delayed)
+    }
+  }, [points.length])
+
+  if (points.length === 0) {
+    return (
+      <view
+        style={{
+          width: '100%',
+          height: '100%',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+      >
+        <text style={{ fontSize: '20rpx', color: '#888' }}>No samples</text>
+      </view>
+    )
+  }
+
+  const layoutWidth = gridLayout?.width ?? 0
+  const layoutHeight = gridLayout?.height ?? 0
+  const maxCellSizePx = layoutHeight > 0
+    ? Math.max(1, (layoutHeight - GRID_GAP_PX * (GRID_LEVELS - 1)) / GRID_LEVELS)
+    : 0
+  const visibleCols = layoutWidth > 0 && maxCellSizePx > 0
+    ? Math.max(1, Math.ceil((layoutWidth + GRID_GAP_PX) / (maxCellSizePx + GRID_GAP_PX)))
+    : 1
+  const cellSizePx = layoutWidth > 0
+    ? Math.max(1, (layoutWidth - GRID_GAP_PX * Math.max(visibleCols - 1, 0)) / visibleCols)
+    : maxCellSizePx || 1
+
+  const recentPoints = points.length > visibleCols
+    ? points.slice(points.length - visibleCols)
+    : points
+  const pointSlots: Array<number | null> = Array.from({ length: visibleCols }, (_, index) => {
+    const point = recentPoints[index - (visibleCols - recentPoints.length)]
+    if (!point) return null
+    return Number.isFinite(point.v) ? Math.max(0, point.v) : 0
+  })
+
+  return (
+    <view
+      style={{
+        width: '100%',
+        height: '100%',
+        display: 'flex',
+        flexDirection: 'row',
+        padding: '6rpx',
+      }}
+    >
+      <view
+        ref={gridRef}
+        style={{
+          width: '100%',
+          height: '100%',
+          display: 'flex',
+          flexDirection: 'row',
+          justifyContent: 'flex-end',
+          alignItems: 'center',
+          overflow: 'hidden',
+        }}
+      >
+        {pointSlots.map((ms, i) => {
+          // Each band uses 3 cells as a fill-up meter (bottom→mid→top).
+          // Each cell covers 1/3 of the band range.
+          // cells[0]=top, cells[1]=mid, cells[2]=bottom (flexDirection:'column' renders top-down).
+          const MIN_OP = 0.05
+          type Cell = { color: string; opacity: number }
+          let cells: [Cell, Cell, Cell]
+
+          const fillCells = (color: string, bandVal: number, bandWidth: number): [Cell, Cell, Cell] => {
+            const t = bandWidth / 3
+            const opBottom = clamp01(bandVal / t)
+            const opMid    = clamp01((bandVal - t) / t)
+            const opTop    = clamp01((bandVal - 2 * t) / t)
+            return [
+              { color, opacity: opTop    > 0 ? opTop    : MIN_OP },
+              { color, opacity: opMid    > 0 ? opMid    : MIN_OP },
+              { color, opacity: opBottom > 0 ? opBottom : MIN_OP },
+            ]
+          }
+
+          if (ms == null) {
+            cells = [
+              { color: baseColor, opacity: MIN_OP },
+              { color: baseColor, opacity: MIN_OP },
+              { color: baseColor, opacity: MIN_OP },
+            ]
+          } else if (ms >= 3000) {
+            cells = [
+              { color: FRAMETIME_BLACK, opacity: 1 },
+              { color: FRAMETIME_BLACK, opacity: 1 },
+              { color: FRAMETIME_BLACK, opacity: 1 },
+            ]
+          } else if (ms >= 900) {
+            cells = fillCells(FRAMETIME_BLACK, ms - 900, 2100)
+          } else if (ms >= 300) {
+            cells = fillCells(FRAMETIME_RED, ms - 300, 600)
+          } else if (ms >= 100) {
+            cells = fillCells(FRAMETIME_ORANGE, ms - 100, 200)
+          } else {
+            cells = fillCells(baseColor, ms, 100)
+          }
+
+          return (
+            <view
+              key={`fgrid-col-${i}`}
+              style={{
+                width: `${cellSizePx}px`,
+                display: 'flex',
+                flexDirection: 'column',
+                marginLeft: i === 0 ? '0px' : `${GRID_GAP_PX}px`,
+              }}
+            >
+              {cells.map((cell, cellIndex) => (
+                <view
+                  key={`fgrid-cell-${i}-${cellIndex}`}
+                  style={{
+                    width: `${cellSizePx}px`,
+                    height: `${cellSizePx}px`,
+                    marginTop: cellIndex === 0 ? '0px' : `${GRID_GAP_PX}px`,
+                    borderRadius: '2px',
+                    backgroundColor: cell.color,
+                    opacity: cell.opacity,
                   }}
                 />
               ))}
@@ -235,6 +417,7 @@ function PerfRow({
   barColor,
   fixedMax,
   unavailable,
+  variant,
 }: {
   label: string
   valueText: string
@@ -244,6 +427,7 @@ function PerfRow({
   barColor: string
   fixedMax?: number
   unavailable?: boolean
+  variant?: 'default' | 'frametime'
 }) {
   return (
     <view style={{ width: '100%', marginBottom: '16rpx' }}>
@@ -282,6 +466,8 @@ function PerfRow({
           >
             <text style={{ fontSize: '20rpx', color: '#888' }}>Not available on this platform</text>
           </view>
+        ) : variant === 'frametime' ? (
+          <FrametimeBandedGrid points={series} baseColor={barColor} />
         ) : (
           <PerfContributionGrid points={series} barColor={barColor} fixedMax={fixedMax} />
         )}
@@ -304,11 +490,9 @@ export function CustomDebugPanel({
   const [appInfo, setAppInfo] = useState<AppInfo>({ bundleId: '—', nativeAppVersion: '—', lynxSdkVersion: '—' })
   const [debugInfo, setDebugInfo] = useState<DebugInfo>({})
   const [iconSrc, setIconSrc] = useState('')
-  const [netLines, setNetLines] = useState('')
   const [frametimeSeries, setFrametimeSeries] = useState<TimeValuePoint[]>([])
   const [cpuSeries, setCpuSeries] = useState<TimeValuePoint[]>([])
-  const [gpuSeries, setGpuSeries] = useState<TimeValuePoint[]>([])
-  const [gpuAvailable, setGpuAvailable] = useState(false)
+  const [lastAvgFps, setLastAvgFps] = useState<number | null>(null)
   const [metricsSummary, setMetricsSummary] = useState('—')
 
   const palette = resolveTheme(theme)
@@ -316,16 +500,10 @@ export function CustomDebugPanel({
   const lineStroke =
     rawPrimary.toLowerCase() === '#000000' || rawPrimary.toLowerCase() === '#000' ? '#7ecbff' : rawPrimary
   const cpuColor = '#8ab4f8'
-  const gpuColor = '#f28b82'
 
   useEffect(() => {
     'background only'
     if (!visible) return
-    try {
-      ensureNetworkDebugInstalled()
-    } catch {
-      // ignore
-    }
     devCall('getAppInfo', {}, (info) => {
       if (info != null && typeof info === 'object' && !Array.isArray(info)) {
         const o = info as Record<string, unknown>
@@ -371,24 +549,6 @@ export function CustomDebugPanel({
   useEffect(() => {
     'background only'
     if (!visible) return
-    const tick = () => {
-      const rows = getNetworkDebugEntries()
-      setNetLines(
-        rows.length === 0
-          ? 'No fetch calls recorded yet.'
-          : rows
-              .map((r) => `${r.ok === false ? '✗' : '✓'} ${r.method} ${r.t}ms ${r.url}`)
-              .join('\n'),
-      )
-    }
-    tick()
-    const id = setInterval(tick, 2000)
-    return () => clearInterval(id)
-  }, [visible])
-
-  useEffect(() => {
-    'background only'
-    if (!visible) return
 
     const perf = lynx.performance
     if (!perf || typeof perf.addTimingListener !== 'function') return
@@ -416,7 +576,7 @@ export function CustomDebugPanel({
     if (!visible) {
       setFrametimeSeries([])
       setCpuSeries([])
-      setGpuSeries([])
+      setLastAvgFps(null)
       return
     }
 
@@ -429,20 +589,15 @@ export function CustomDebugPanel({
     const seedFrom = (rows: PerfSample[]) => {
       const ft: TimeValuePoint[] = []
       const cp: TimeValuePoint[] = []
-      const gp: TimeValuePoint[] = []
-      let anyGpu = false
+      let latestFps: number | null = null
       for (const s of rows) {
         ft.push({ t: s.t, v: Number.isFinite(s.frametimeMs) ? s.frametimeMs : 0 })
         cp.push({ t: s.t, v: Number.isFinite(s.cpuPct) && s.cpuPct >= 0 ? s.cpuPct : 0 })
-        if (Number.isFinite(s.gpuPct) && s.gpuPct >= 0) {
-          gp.push({ t: s.t, v: s.gpuPct })
-          anyGpu = true
-        }
+        if (typeof s.avgFps === 'number' && s.avgFps > 0) latestFps = s.avgFps
       }
       setFrametimeSeries(ft)
       setCpuSeries(cp)
-      setGpuSeries(gp)
-      if (anyGpu) setGpuAvailable(true)
+      if (latestFps != null) setLastAvgFps(latestFps)
     }
 
     const normalizeSamples = (raw: unknown): PerfSample[] => {
@@ -459,9 +614,9 @@ export function CustomDebugPanel({
         const t = typeof o.t === 'number' ? o.t : NaN
         const frametimeMs = typeof o.frametimeMs === 'number' ? o.frametimeMs : NaN
         const cpuPct = typeof o.cpuPct === 'number' ? o.cpuPct : NaN
-        const gpuPct = typeof o.gpuPct === 'number' ? o.gpuPct : -1
+        const avgFps = typeof o.avgFps === 'number' ? o.avgFps : undefined
         if (!Number.isFinite(t)) continue
-        out.push({ t, frametimeMs, cpuPct, gpuPct })
+        out.push({ t, frametimeMs, cpuPct, avgFps })
       }
       return out
     }
@@ -478,13 +633,10 @@ export function CustomDebugPanel({
       const t = typeof o.t === 'number' ? o.t : Date.now()
       const frametimeMs = typeof o.frametimeMs === 'number' ? o.frametimeMs : 0
       const cpuPct = typeof o.cpuPct === 'number' ? o.cpuPct : 0
-      const gpuPct = typeof o.gpuPct === 'number' ? o.gpuPct : -1
+      const avgFps = typeof o.avgFps === 'number' && o.avgFps > 0 ? o.avgFps : null
       setFrametimeSeries((prev) => pushBounded(prev, { t, v: Math.max(0, frametimeMs) }))
       setCpuSeries((prev) => pushBounded(prev, { t, v: Math.max(0, cpuPct) }))
-      if (gpuPct >= 0) {
-        setGpuAvailable(true)
-        setGpuSeries((prev) => pushBounded(prev, { t, v: gpuPct }))
-      }
+      if (avgFps != null) setLastAvgFps(avgFps)
     }
     emitter?.addListener?.('devclient:perfSample', handler)
 
@@ -531,7 +683,9 @@ export function CustomDebugPanel({
   const lastFrametime =
     frametimeSeries.length > 0 ? frametimeSeries[frametimeSeries.length - 1].v : null
   const lastCpu = cpuSeries.length > 0 ? cpuSeries[cpuSeries.length - 1].v : null
-  const lastGpu = gpuSeries.length > 0 ? gpuSeries[gpuSeries.length - 1].v : null
+  const frametimeText = lastFrametime != null
+    ? `${lastFrametime < 100 ? lastFrametime.toFixed(1) : Math.round(lastFrametime)} ms${lastAvgFps != null ? ` · ${lastAvgFps} fps` : ''}`
+    : '—'
 
   return (
     <view
@@ -647,15 +801,12 @@ export function CustomDebugPanel({
 
           <PerfRow
             label="Frametime"
-            valueText={
-              lastFrametime != null
-                ? `${lastFrametime < 100 ? lastFrametime.toFixed(1) : Math.round(lastFrametime)} ms`
-                : '—'
-            }
+            valueText={frametimeText}
             labelColor={palette.onSurfaceVariant ?? '#aaa'}
             valueColor={palette.onSurface ?? '#eee'}
             series={frametimeSeries}
             barColor={lineStroke}
+            variant="frametime"
           />
           <PerfRow
             label="CPU"
@@ -666,38 +817,6 @@ export function CustomDebugPanel({
             barColor={cpuColor}
             fixedMax={100}
           />
-          <PerfRow
-            label="GPU"
-            valueText={
-              gpuAvailable && lastGpu != null ? `${Math.round(lastGpu)}%` : 'N/A'
-            }
-            labelColor={palette.onSurfaceVariant ?? '#aaa'}
-            valueColor={palette.onSurface ?? '#eee'}
-            series={gpuAvailable ? gpuSeries : []}
-            barColor={gpuColor}
-            fixedMax={100}
-            unavailable={!gpuAvailable}
-          />
-
-          <text
-            style={{
-              fontSize: '24rpx',
-              color: palette.onSurfaceVariant ?? '#aaa',
-              marginBottom: '8rpx',
-            }}
-          >
-            Network (fetch)
-          </text>
-          <text
-            style={{
-              fontSize: '22rpx',
-              fontFamily: 'monospace',
-              color: palette.onSurface ?? '#ddd',
-              marginBottom: '20rpx',
-            }}
-          >
-            {netLines}
-          </text>
         </scroll-view>
 
         <view
