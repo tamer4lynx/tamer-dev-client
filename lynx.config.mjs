@@ -7,6 +7,22 @@ import { pluginTamer } from '@tamer4lynx/tamer-plugin'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
+/** Load monorepo root .env so OFFICIAL_APP_SOURCE etc are available without explicit shell export. */
+for (const candidate of [path.resolve(__dirname, '../../.env'), path.resolve(__dirname, '.env')]) {
+  if (!fs.existsSync(candidate)) continue
+  for (const line of fs.readFileSync(candidate, 'utf8').split('\n')) {
+    const m = line.match(/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*?)\s*$/)
+    if (!m) continue
+    if (process.env[m[1]] === undefined) {
+      let v = m[2]
+      if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) {
+        v = v.slice(1, -1)
+      }
+      process.env[m[1]] = v
+    }
+  }
+}
+
 const tamerRouter = tamerRouterPlugin({
   root: './src/pages',
   output: 'src/generated-routes.tsx',
@@ -34,6 +50,9 @@ export default {
       'dev-client': './src/index.tsx',
       /** Minimal shell for native debug dialog / overlay (no router, no dev launcher chrome). */
       'tamer-debug': './src/tamer-debug-panel.tsx',
+    },
+    define: {
+      __OFFICIAL_APP_SOURCE__: JSON.stringify(process.env.OFFICIAL_APP_SOURCE ?? ''),
     },
   },
   resolve: {

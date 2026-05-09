@@ -1,7 +1,36 @@
 import { useEffect, useState } from '@lynx-js/react'
+import '@tamer4lynx/tamer-icons'
+import { openURL } from '@tamer4lynx/tamer-linking'
 import { devCall } from '../devcall'
 import { DEV_CLIENT_PACKAGE_VERSION } from '../packageVersion'
 import { useDevLauncher, resolveTheme } from '../DevLauncherContext'
+
+const TAMER_DEV_APP_BUNDLE_ID = 'com.nanofuxion.tamerdevapp'
+declare const __OFFICIAL_APP_SOURCE__: string
+const OFFICIAL_APP_SOURCE: string = typeof __OFFICIAL_APP_SOURCE__ !== 'undefined' ? __OFFICIAL_APP_SOURCE__ : ''
+const CREDIT_LINKS: Array<{ id: string; icon: string; set: 'fab' | 'fa'; label: string; url: string }> = [
+  {
+    id: 'github',
+    icon: 'github',
+    set: 'fab',
+    label: 'tamer4lynx/tamer4lynx',
+    url: 'https://github.com/tamer4lynx/tamer4lynx',
+  },
+  {
+    id: 'discord',
+    icon: 'discord',
+    set: 'fab',
+    label: '@nanofuxion',
+    url: 'https://discord.com/users/235301625659392001',
+  },
+  {
+    id: 'email',
+    icon: 'envelope',
+    set: 'fa',
+    label: 'ramnadroj@gmail.com',
+    url: 'mailto:ramnadroj@gmail.com',
+  },
+]
 
 export default function AboutPage() {
   const { theme } = useDevLauncher()
@@ -42,7 +71,11 @@ export default function AboutPage() {
           Package
         </text>
         <view className="DevLauncher__cardBlock">
-          <text className="DevLauncher__hint" style={{ color: colors.onSurface }}>Dev client (npm)</text>
+          <text className="DevLauncher__hint" style={{ color: colors.onSurface }}>
+            {bundleId === TAMER_DEV_APP_BUNDLE_ID
+              ? `Tamer Dev App${OFFICIAL_APP_SOURCE ? ` (${OFFICIAL_APP_SOURCE})` : ''}`
+              : 'Dev client (npm)'}
+          </text>
           <text className="DevLauncher__aboutValue" style={{ color: colors.onSurface }}>
             Version {DEV_CLIENT_PACKAGE_VERSION}
           </text>
@@ -82,6 +115,48 @@ export default function AboutPage() {
           </text>
         </view>
       </view>
+
+      {bundleId === TAMER_DEV_APP_BUNDLE_ID ? (
+        <view
+          className="DevLauncher__card"
+          style={{ backgroundColor: colors.surfaceContainer, borderColor: cardBorder }}
+        >
+          <text className="DevLauncher__cardTitle" style={{ color: colors.onSurfaceVariant ?? '#888888' }}>
+            Created by Nanofuxion
+          </text>
+          <view style={{ display: 'flex', flexDirection: 'column' }}>
+            {CREDIT_LINKS.map((link) => (
+              <view
+                key={link.id}
+                style={{
+                  display: 'flex',
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  paddingTop: '12px',
+                  paddingBottom: '12px',
+                }}
+                bindtap={() => {
+                  openURL(link.url)
+                }}
+              >
+                <icon
+                  icon={link.icon}
+                  set={link.set}
+                  size={20}
+                  iconColor={colors.onSurface}
+                  style={{ width: '24px', height: '24px', marginRight: '12px', flexShrink: 0 }}
+                />
+                <text
+                  className="DevLauncher__aboutValue"
+                  style={{ color: colors.onSurface, fontSize: '14px', flexGrow: 1, flexShrink: 1 }}
+                >
+                  {link.label}
+                </text>
+              </view>
+            ))}
+          </view>
+        </view>
+      ) : null}
     </view>
   )
 }

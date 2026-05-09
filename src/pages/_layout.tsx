@@ -1,21 +1,20 @@
 import { useCallback, useEffect } from '@lynx-js/react'
 import { Button } from '@tamer4lynx/tamer-app-shell'
 import { Tab, TabScreen, useTamerNavigate } from '@tamer4lynx/tamer-router'
-import { useSystemUI, useThemeColors } from '@tamer4lynx/tamer-system-ui'
+import { useSystemUI } from '@tamer4lynx/tamer-system-ui'
 import { useDevLauncher, resolveTheme } from '../DevLauncherContext'
-import { setLauncherSystemTheme } from '../launcherThemeState'
 
 export default function Layout() {
   const { replace } = useTamerNavigate()
   const { setStatusBar, setNavigationBar } = useSystemUI()
-  const osTheme = useThemeColors()
-  const colors = resolveTheme(osTheme)
   const {
+    theme,
     incompatibleModalVisible,
     setIncompatibleModalVisible,
     incompatibleModules,
     navigateToConnectRef,
   } = useDevLauncher()
+  const colors = resolveTheme(theme)
 
   useEffect(() => {
     'background only'
@@ -30,11 +29,6 @@ export default function Layout() {
     setStatusBar({ color: colors.surface, style: colors.isDark ? 'light' : 'dark' })
     setNavigationBar({ color: colors.surfaceContainer ?? '#000000', style: colors.isDark ? 'light' : 'dark' })
   }, [colors.surface, colors.surfaceContainer, colors.isDark, setStatusBar, setNavigationBar])
-
-  useEffect(() => {
-    'background only'
-    setLauncherSystemTheme(osTheme ?? null)
-  }, [osTheme])
 
   const onDismissIncompatibleModal = useCallback(() => {
     'background only'

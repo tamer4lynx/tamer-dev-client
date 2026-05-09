@@ -1,7 +1,24 @@
-import { useCallback } from '@lynx-js/react'
+import { useCallback, useEffect, useRef, useState } from '@lynx-js/react'
 import { Button } from '@tamer4lynx/tamer-app-shell'
 import CombinedServerList from '../components/CombinedServerList'
 import { useDevLauncher, resolveTheme } from '../DevLauncherContext'
+
+const DEV_SERVER_URL_INPUT_ID = 'dev-server-url'
+const isIOS = SystemInfo.platform === 'iOS'
+
+const updateInputById = (id: string, value: string) => {
+  lynx.createSelectorQuery()
+    .select(`#${id}`)
+    .invoke({
+      method: 'setValue',
+      params: {
+        value,
+      },
+      success: function () {},
+      fail: function () {},
+    })
+    .exec()
+}
 
 export default function ConnectPage() {
   const {
@@ -21,12 +38,35 @@ export default function ConnectPage() {
     removeRecentItem,
   } = useDevLauncher()
   const colors = resolveTheme(theme)
+  const inputValueRef = useRef('')
+  const inputBackgroundColor = colors.isDark ? colors.surfaceContainer ?? '#1e1e1e' : colors.surfaceContainer
+  const inputThemeKey = `${inputBackgroundColor}:${colors.onSurface}`
+  const [pageContentReady, setPageContentReady] = useState(!isIOS)
 
   const onConnect = useCallback(() => {
     'background only'
     console.error('[DevLauncher] Connect tapped url=', url)
     openProject(url)
   }, [url, openProject])
+
+  useEffect(() => {
+    'background only'
+    if (!pageContentReady) return
+    inputValueRef.current = url
+    updateInputById(DEV_SERVER_URL_INPUT_ID, url)
+  }, [url, inputThemeKey, pageContentReady])
+
+  useEffect(() => {
+    'background only'
+    if (!isIOS) return
+    setPageContentReady(false)
+    const timeoutId = setTimeout(() => {
+      setPageContentReady(true)
+    }, 10)
+    return () => {
+      clearTimeout(timeoutId)
+    }
+  }, [inputThemeKey])
 
   return (
     <view
@@ -43,28 +83,32 @@ export default function ConnectPage() {
         width: '100%',
       }}
     >
+      {pageContentReady ? (
+        <>
       <view className="DevLauncher__section" style={{ flexShrink: 0 }}>
         <text className="DevLauncher__sectionTitle" style={{ color: colors.onSurface }}>Connect to dev server</text>
         <text className="DevLauncher__hint" style={{ color: colors.onSurface }}>Start a local development server with: npx t4l start</text>
         <text className="DevLauncher__hint" style={{ color: colors.onSurface }}>Then, enter the dev server URL when it appears here.</text>
         <input
+          id={DEV_SERVER_URL_INPUT_ID}
           className="DevLauncher__input"
           style={{
-            backgroundColor: colors.surfaceContainer,
+            backgroundColor: inputBackgroundColor,
             color: colors.onSurface,
             boxSizing: 'border-box',
             minWidth: '0px',
             maxWidth: '100%',
             overflow: 'hidden',
           }}
-          value={url}
           placeholder="http://localhost:3000/example"
           type="text"
           ios-auto-correct={false}
           ios-spell-check={false}
           bindinput={(e) => {
             'background only'
-            setUrl(e.detail.value)
+            const nextUrl = e.detail.value
+            inputValueRef.current = nextUrl
+            setUrl(nextUrl)
           }}
         />
         {connectError ? (
@@ -125,6 +169,8 @@ export default function ConnectPage() {
           />
         </view>
       </scroll-view>
+        </>
+      ) : null}
     </view>
   )
 }

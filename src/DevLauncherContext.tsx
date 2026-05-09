@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from '@lynx-js/react'
+import { readBootstrapThemeColors, useThemeColors } from '@tamer4lynx/tamer-system-ui'
 import { devCall, toRequiredModules, type RequiredModule } from './devcall'
 import {
   normalizeDevServerBase,
@@ -15,9 +16,6 @@ import {
 import {
   type DevLauncherTheme,
 } from './devLauncherTheme.js'
-import {
-  subscribeLauncherThemeState,
-} from './launcherThemeState.js'
 import { serverIdentityKey } from './serverIdentity'
 export * from './devLauncherTheme.js'
 
@@ -170,9 +168,12 @@ function toRecentArray(r: unknown): string[] {
 }
 
 export function DevLauncherProvider({ children }: { children: React.ReactNode }) {
+  const systemTheme = useThemeColors()
+  const bootstrapTheme = readBootstrapThemeColors()
   const [url, setUrlState] = useState('')
   const navigateToConnectRef = useRef<(() => void) | null>(null)
-  const [theme, setTheme] = useState<DevLauncherTheme | null>(null)
+  const [themeOverride, setTheme] = useState<DevLauncherTheme | null>(null)
+  const theme = themeOverride ?? systemTheme ?? bootstrapTheme
   const [recentEntries, setRecentEntries] = useState<RecentEntry[]>([])
   const recentUrls = recentEntries.map((e) => e.url)
   const recentEntriesRef = useRef(recentEntries)
@@ -220,13 +221,6 @@ export function DevLauncherProvider({ children }: { children: React.ReactNode })
     })
     loadRecentFromNative()
   }, [loadRecentFromNative])
-
-  useEffect(() => {
-    'background only'
-    return subscribeLauncherThemeState((nextTheme) => {
-      setTheme(nextTheme)
-    })
-  }, [])
 
   const refreshRecent = useCallback(() => {
     'background only'
