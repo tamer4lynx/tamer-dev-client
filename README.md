@@ -8,7 +8,7 @@ Native dev client module for Tamer4Lynx — QR scan, discovery, URL persistence,
 npm install @tamer4lynx/tamer-dev-client
 ```
 
-Add to your app's dependencies and run `t4l link`. Used by **tamer-dev-app** for the dev launcher experience.
+Add to your app's dependencies and run `t4l link`. The monorepo's **tamer-dev-app** workspace uses it for the reference launcher experience.
 
 The npm tarball includes **`dist/dev-client.lynx.bundle`** and **`dist/tamer-debug.lynx.bundle`** (both built in **`prepublishOnly`**). Installs do not run Rspeedy. To work on this package from a git clone, run **`npm run build`** once so `dist/` exists.
 
