@@ -5,32 +5,67 @@ import { devCall } from '../devcall'
 import { DEV_CLIENT_PACKAGE_VERSION } from '../packageVersion'
 import { useDevLauncher, resolveTheme } from '../DevLauncherContext'
 
-const TAMER_DEV_APP_BUNDLE_ID = 'com.nanofuxion.tamerdevapp'
-declare const __OFFICIAL_APP_SOURCE__: string
-const OFFICIAL_APP_SOURCE: string = typeof __OFFICIAL_APP_SOURCE__ !== 'undefined' ? __OFFICIAL_APP_SOURCE__ : ''
-const CREDIT_LINKS: Array<{ id: string; icon: string; set: 'fab' | 'fa'; label: string; url: string }> = [
-  {
-    id: 'github',
-    icon: 'github',
-    set: 'fab',
-    label: 'tamer4lynx/tamer4lynx',
-    url: 'https://github.com/tamer4lynx/tamer4lynx',
-  },
-  {
-    id: 'discord',
-    icon: 'discord',
-    set: 'fab',
-    label: '@nanofuxion',
-    url: 'https://discord.com/users/235301625659392001',
-  },
-  {
-    id: 'email',
-    icon: 'envelope',
-    set: 'fa',
-    label: 'ramnadroj@gmail.com',
-    url: 'mailto:ramnadroj@gmail.com',
-  },
-]
+type OfficialAppLink = {
+  id?: string
+  icon?: string
+  set?: 'fab' | 'fa'
+  label?: string
+  url?: string
+}
+
+type OfficialAppMetadata = {
+  displayName?: string
+  packageLabel?: string
+  source?: string
+  androidPackageId?: string
+  iosBundleId?: string
+  creditTitle?: string
+  links?: OfficialAppLink[]
+}
+
+declare const __TAMER_DEV_CLIENT_OFFICIAL_APP_METADATA__: OfficialAppMetadata | null | undefined
+
+const OFFICIAL_APP_METADATA: OfficialAppMetadata | null =
+  typeof __TAMER_DEV_CLIENT_OFFICIAL_APP_METADATA__ !== 'undefined'
+    ? __TAMER_DEV_CLIENT_OFFICIAL_APP_METADATA__ ?? null
+    : null
+
+function isOfficialBundleId(bundleId: string): boolean {
+  if (!OFFICIAL_APP_METADATA || bundleId === '—') return false
+  return [OFFICIAL_APP_METADATA.androidPackageId, OFFICIAL_APP_METADATA.iosBundleId]
+    .filter((value): value is string => typeof value === 'string' && value.length > 0)
+    .includes(bundleId)
+}
+
+function getOfficialPackageLabel(): string {
+  const name =
+    OFFICIAL_APP_METADATA?.packageLabel ??
+    OFFICIAL_APP_METADATA?.displayName ??
+    'Tamer Dev App'
+  const source = OFFICIAL_APP_METADATA?.source
+  return source ? `${name} (${source})` : name
+}
+
+function getOfficialLinks(): Array<Required<Pick<OfficialAppLink, 'icon' | 'label' | 'url'>> & { id: string; set: 'fab' | 'fa' }> {
+  const links = Array.isArray(OFFICIAL_APP_METADATA?.links) ? OFFICIAL_APP_METADATA.links : []
+  return links
+    .filter(
+      (link): link is OfficialAppLink & { icon: string; label: string; url: string } =>
+        typeof link.icon === 'string' &&
+        link.icon.length > 0 &&
+        typeof link.label === 'string' &&
+        link.label.length > 0 &&
+        typeof link.url === 'string' &&
+        link.url.length > 0,
+    )
+    .map((link, index) => ({
+      id: link.id ?? `${link.icon}-${index}`,
+      icon: link.icon,
+      set: link.set === 'fab' ? 'fab' : 'fa',
+      label: link.label,
+      url: link.url,
+    }))
+}
 
 export default function AboutPage() {
   const { theme } = useDevLauncher()
@@ -40,6 +75,8 @@ export default function AboutPage() {
   const [lynxSdkVersion, setLynxSdkVersion] = useState('—')
 
   const cardBorder = colors.isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)'
+  const isOfficialApp = isOfficialBundleId(bundleId)
+  const officialLinks = isOfficialApp ? getOfficialLinks() : []
 
   useEffect(() => {
     'background only'
@@ -72,9 +109,7 @@ export default function AboutPage() {
         </text>
         <view className="DevLauncher__cardBlock">
           <text className="DevLauncher__hint" style={{ color: colors.onSurface }}>
-            {bundleId === TAMER_DEV_APP_BUNDLE_ID
-              ? `Tamer Dev App${OFFICIAL_APP_SOURCE ? ` (${OFFICIAL_APP_SOURCE})` : ''}`
-              : 'Dev client (npm)'}
+            {isOfficialApp ? getOfficialPackageLabel() : 'Dev client (npm)'}
           </text>
           <text className="DevLauncher__aboutValue" style={{ color: colors.onSurface }}>
             Version {DEV_CLIENT_PACKAGE_VERSION}
@@ -116,16 +151,16 @@ export default function AboutPage() {
         </view>
       </view>
 
-      {bundleId === TAMER_DEV_APP_BUNDLE_ID ? (
+      {officialLinks.length > 0 ? (
         <view
           className="DevLauncher__card"
           style={{ backgroundColor: colors.surfaceContainer, borderColor: cardBorder }}
         >
           <text className="DevLauncher__cardTitle" style={{ color: colors.onSurfaceVariant ?? '#888888' }}>
-            Created by Nanofuxion
+            {OFFICIAL_APP_METADATA?.creditTitle ?? 'Official app'}
           </text>
           <view style={{ display: 'flex', flexDirection: 'column' }}>
-            {CREDIT_LINKS.map((link) => (
+            {officialLinks.map((link) => (
               <view
                 key={link.id}
                 style={{

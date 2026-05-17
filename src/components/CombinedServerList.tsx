@@ -2,6 +2,11 @@ import { useCallback, useMemo } from '@lynx-js/react'
 import { useTamerNavigate } from '@tamer4lynx/tamer-router'
 import ServerListRow from './ServerListRow'
 import RecentSwipeRow from './RecentSwipeRow'
+import lynxIconMono from '../assets/lynx-icon-mono.png?inline'
+
+function isBundleUrl(url: string): boolean {
+  return url.includes('.lynx.bundle')
+}
 import type {
   DevLauncherTheme,
   DiscoveredServer,
@@ -18,7 +23,7 @@ type Props = {
   recentEntries: RecentEntry[]
   recentReachability: Record<string, RecentReachability>
   recentRowIconSrc: Record<string, string | undefined>
-  openProjectDirectly: (bundleUrl: string) => void
+  openProject: (rawUrl: string) => void
   setUrl: (u: string) => void
   showIncompatibleModalForUrl: (parsed: string) => void
   removeRecentItem: (url: string) => void
@@ -32,7 +37,7 @@ export default function CombinedServerList(props: Props) {
     recentEntries,
     recentReachability,
     recentRowIconSrc,
-    openProjectDirectly,
+    openProject,
     setUrl,
     showIncompatibleModalForUrl,
     removeRecentItem,
@@ -71,9 +76,9 @@ export default function CombinedServerList(props: Props) {
       }
       setUrl(parsed)
       replace('/')
-      openProjectDirectly(parsed)
+      openProject(rawUrl)
     },
-    [parseUrl, setUrl, replace, openProjectDirectly, showIncompatibleModalForUrl],
+    [parseUrl, setUrl, replace, openProject, showIncompatibleModalForUrl],
   )
 
   const handleRecentSelect = useCallback(
@@ -82,9 +87,9 @@ export default function CombinedServerList(props: Props) {
       const parsed = parseUrl(rawUrl)
       setUrl(parsed)
       replace('/')
-      openProjectDirectly(parsed)
+      openProject(rawUrl)
     },
-    [parseUrl, setUrl, replace, openProjectDirectly],
+    [parseUrl, setUrl, replace, openProject],
   )
 
   const subtitleColor = colors.onSurfaceVariant ?? '#888888'
@@ -109,7 +114,7 @@ export default function CombinedServerList(props: Props) {
               <ServerListRow
                 key={s.url}
                 dotClass={dotClass}
-                iconUrl={s.iconUrl}
+                iconUrl={isBundleUrl(s.url) ? lynxIconMono : s.iconUrl}
                 title={s.name || s.url}
                 subtitle={s.url}
                 surfaceColor={colors.surfaceContainer ?? '#1e1e1e'}
@@ -155,7 +160,7 @@ export default function CombinedServerList(props: Props) {
                   key={e.url}
                   title={title}
                   subtitle={subtitle}
-                  iconUrl={recentRowIconSrc[e.url] ?? e.iconUrl}
+                  iconUrl={isBundleUrl(e.url) ? lynxIconMono : (recentRowIconSrc[e.url] ?? e.iconUrl)}
                   dotClass={dotClass}
                   surfaceColor={colors.surfaceContainer ?? '#1e1e1e'}
                   titleColor={colors.onSurface ?? '#fff'}

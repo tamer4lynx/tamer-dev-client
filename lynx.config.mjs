@@ -23,6 +23,29 @@ for (const candidate of [path.resolve(__dirname, '../../.env'), path.resolve(__d
   }
 }
 
+function readOfficialAppMetadata() {
+  if (process.env.TAMER_DEV_CLIENT_OFFICIAL_APP_METADATA_JSON) {
+    try {
+      return JSON.parse(process.env.TAMER_DEV_CLIENT_OFFICIAL_APP_METADATA_JSON)
+    } catch (error) {
+      console.warn('Ignoring invalid TAMER_DEV_CLIENT_OFFICIAL_APP_METADATA_JSON:', error?.message ?? error)
+    }
+  }
+  if (process.env.TAMER_DEV_CLIENT_OFFICIAL_APP_METADATA_FILE) {
+    const filePath = path.resolve(process.env.TAMER_DEV_CLIENT_OFFICIAL_APP_METADATA_FILE)
+    if (fs.existsSync(filePath)) {
+      try {
+        return JSON.parse(fs.readFileSync(filePath, 'utf8'))
+      } catch (error) {
+        console.warn('Ignoring invalid TAMER_DEV_CLIENT_OFFICIAL_APP_METADATA_FILE:', error?.message ?? error)
+      }
+    }
+  }
+  return null
+}
+
+const officialAppMetadata = readOfficialAppMetadata()
+
 const tamerRouter = tamerRouterPlugin({
   root: './src/pages',
   output: 'src/generated-routes.tsx',
@@ -52,7 +75,7 @@ export default {
       'tamer-debug': './src/tamer-debug-panel.tsx',
     },
     define: {
-      __OFFICIAL_APP_SOURCE__: JSON.stringify(process.env.OFFICIAL_APP_SOURCE ?? ''),
+      __TAMER_DEV_CLIENT_OFFICIAL_APP_METADATA__: JSON.stringify(officialAppMetadata),
     },
   },
   resolve: {

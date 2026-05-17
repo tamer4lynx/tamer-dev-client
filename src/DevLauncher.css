@@ -187,11 +187,8 @@
 }
 
 .DevLauncher__swipeRowSurface {
-  position: relative;
-  z-index: 1;
   width: 100%;
   box-sizing: border-box;
-  overflow: visible;
 }
 
 .DevLauncher__statusDot {

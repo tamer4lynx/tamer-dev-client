@@ -109,13 +109,36 @@ class DevTemplateProvider: NSObject, LynxTemplateProvider, LynxTemplateResourceF
 
     private func normalizeBundlePath(_ url: String?) -> String? {
         guard var s = url?.trimmingCharacters(in: .whitespacesAndNewlines), !s.isEmpty else { return nil }
+        if let fragment = s.firstIndex(of: "#") {
+            s = String(s[..<fragment])
+        }
         if let query = s.firstIndex(of: "?") {
             s = String(s[..<query])
         }
+        if let parsed = URL(string: s), parsed.scheme != nil, !parsed.path.isEmpty {
+            s = parsed.path
+        }
+        s = s.replacingOccurrences(of: "\\", with: "/")
         while s.hasPrefix("/") {
             s.removeFirst()
         }
-        return (s as NSString).standardizingPath
+        s = stripBeforeMarker(s, marker: ".lynx.bundle/")
+        s = stripBeforeMarker(s, marker: ".web.bundle/")
+        s = stripBeforeMarker(s, marker: "static/")
+        s = stripBeforeMarker(s, marker: "assets/")
+        s = stripBeforeMarker(s, marker: "tamer-assets.json")
+        let normalized = (s as NSString).standardizingPath
+        if normalized == ".." || normalized.hasPrefix("../") { return nil }
+        return normalized
+    }
+
+    private func stripBeforeMarker(_ value: String, marker: String) -> String {
+        guard let range = value.range(of: marker) else { return value }
+        if range.lowerBound == value.startIndex { return value }
+        if marker.hasSuffix("/") {
+            return String(value[range.upperBound...])
+        }
+        return String(value[range.lowerBound...])
     }
 
     private func httpFetch(url: String) -> Data? {

@@ -1,6 +1,7 @@
 export type ReachabilityResult =
   | { kind: 'reachable_tamer' }
   | { kind: 'reachable_no_meta' }
+  | { kind: 'reachable_bundle'; bundleUrl: string }
   | { kind: 'unreachable' }
 
 const META_TIMEOUT_MS = 5000
@@ -57,6 +58,12 @@ function statusUrlForBase(base: string): string {
   return `${base.replace(/\/+$/, '')}/status`
 }
 
+const BUNDLE_FILENAME = 'main.lynx.bundle'
+
+function bundleUrlForBase(base: string): string {
+  return `${base.replace(/\/+$/, '')}/${BUNDLE_FILENAME}`
+}
+
 export async function probeDevServerReachability(baseUrl: string): Promise<ReachabilityResult> {
   const meta = metaUrlForBase(baseUrl)
   const { signal, cancel } = withTimeoutMs(META_TIMEOUT_MS)
@@ -70,11 +77,13 @@ export async function probeDevServerReachability(baseUrl: string): Promise<Reach
       return { kind: 'reachable_tamer' }
     }
     if (res.status === 404) {
-      return probeStatusOnly(baseUrl)
+      const statusResult = await probeStatusOnly(baseUrl)
+      if (statusResult.kind !== 'unreachable') return statusResult
+      return probeBundleOnly(baseUrl)
     }
     return { kind: 'unreachable' }
   } catch {
-    return { kind: 'unreachable' }
+    return probeBundleOnly(baseUrl)
   } finally {
     cancel()
   }
@@ -93,6 +102,20 @@ async function probeStatusOnly(baseUrl: string): Promise<ReachabilityResult> {
       const text = await res.text()
       if (text.includes('packager-status:running')) return { kind: 'reachable_no_meta' }
     }
+    return { kind: 'unreachable' }
+  } catch {
+    return { kind: 'unreachable' }
+  } finally {
+    cancel()
+  }
+}
+
+async function probeBundleOnly(baseUrl: string): Promise<ReachabilityResult> {
+  const bundleUrl = bundleUrlForBase(baseUrl)
+  const { signal, cancel } = withTimeoutMs(STATUS_TIMEOUT_MS)
+  try {
+    const res = await fetch(bundleUrl, { method: 'HEAD', signal })
+    if (res.ok) return { kind: 'reachable_bundle', bundleUrl }
     return { kind: 'unreachable' }
   } catch {
     return { kind: 'unreachable' }

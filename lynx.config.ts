@@ -21,9 +21,35 @@ for (const [pkg, rel] of candidates) {
   if (fs.existsSync(p)) monorepoAliases[pkg] = p
 }
 
+function readOfficialAppMetadata(): unknown {
+  if (process.env.TAMER_DEV_CLIENT_OFFICIAL_APP_METADATA_JSON) {
+    try {
+      return JSON.parse(process.env.TAMER_DEV_CLIENT_OFFICIAL_APP_METADATA_JSON)
+    } catch (error) {
+      console.warn('Ignoring invalid TAMER_DEV_CLIENT_OFFICIAL_APP_METADATA_JSON:', error)
+    }
+  }
+  if (process.env.TAMER_DEV_CLIENT_OFFICIAL_APP_METADATA_FILE) {
+    const filePath = path.resolve(process.env.TAMER_DEV_CLIENT_OFFICIAL_APP_METADATA_FILE)
+    if (fs.existsSync(filePath)) {
+      try {
+        return JSON.parse(fs.readFileSync(filePath, 'utf8'))
+      } catch (error) {
+        console.warn('Ignoring invalid TAMER_DEV_CLIENT_OFFICIAL_APP_METADATA_FILE:', error)
+      }
+    }
+  }
+  return null
+}
+
+const officialAppMetadata = readOfficialAppMetadata()
+
 export default {
   source: {
     entry: { 'dev-client': './src/index.tsx' },
+    define: {
+      __TAMER_DEV_CLIENT_OFFICIAL_APP_METADATA__: JSON.stringify(officialAppMetadata),
+    },
   },
   resolve: {
     alias: monorepoAliases,

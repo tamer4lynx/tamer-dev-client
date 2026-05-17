@@ -25,7 +25,6 @@ export default function ConnectPage() {
     url,
     setUrl,
     openProject,
-    openProjectDirectly,
     onScanQR,
     theme,
     connectError,
@@ -100,7 +99,7 @@ export default function ConnectPage() {
             maxWidth: '100%',
             overflow: 'hidden',
           }}
-          placeholder="http://localhost:3000/example"
+          placeholder="http://localhost:3000/example or .../main.lynx.bundle"
           type="text"
           ios-auto-correct={false}
           ios-spell-check={false}
@@ -162,7 +161,6 @@ export default function ConnectPage() {
             recentReachability={recentReachability}
             recentRowIconSrc={recentRowIconSrc}
             openProject={openProject}
-            openProjectDirectly={openProjectDirectly}
             setUrl={setUrl}
             showIncompatibleModalForUrl={showIncompatibleModalForUrl}
             removeRecentItem={removeRecentItem}

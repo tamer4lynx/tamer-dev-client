@@ -45,12 +45,26 @@ function pickPreferredRecentEntry(current: RecentEntry, next: RecentEntry): Rece
   }
 }
 
+function urlPort(url: string): number {
+  const m = /^https?:\/\/[^/:]+:(\d{1,5})/.exec(url)
+  return m ? parseInt(m[1], 10) : (url.startsWith('https') ? 443 : 80)
+}
+
+function discoveredServerKey(server: DiscoveredServer): string {
+  const key = server.tamerAppKey?.trim()
+  if (key) return `key:${key}`
+  const name = server.name.trim()
+  if (name) return `name:${name}`
+  return `url:${normalizeDevServerBase(server.url)}`
+}
+
 function pickPreferredDiscoveredServer(current: DiscoveredServer, next: DiscoveredServer): DiscoveredServer {
-  const currentName = current.name.trim()
-  const nextName = next.name.trim()
+  // Prefer higher port — when a session can't bind its preferred port it increments,
+  // so the higher port is the newer (live) session.
+  const url = urlPort(next.url) > urlPort(current.url) ? next.url : current.url
   return {
-    url: current.url,
-    name: currentName || nextName,
+    url,
+    name: current.name.trim() || next.name.trim(),
     compatible: current.compatible === false || next.compatible === false ? false : true,
     iconUrl: current.iconUrl ?? next.iconUrl,
     tamerAppKey: current.tamerAppKey ?? next.tamerAppKey,
@@ -89,7 +103,7 @@ function normalizeDiscoveredServers(raw: unknown): DiscoveredServer[] {
       iconUrl: o.iconUrl != null ? String(o.iconUrl) : undefined,
       tamerAppKey: o.tamerAppKey != null ? String(o.tamerAppKey) : undefined,
     }
-    const key = serverIdentityKey(next)
+    const key = discoveredServerKey(next)
     const existing = byKey.get(key)
     if (!existing) {
       byKey.set(key, next)
@@ -141,7 +155,6 @@ interface DevLauncherContextValue {
   removeRecentItem: (url: string) => void
   connectToUrl: (parsed: string) => void
   openProject: (rawUrl: string) => void
-  openProjectDirectly: (bundleUrl: string) => void
   showIncompatibleModalForUrl: (parsed: string) => void
   onSelectRecent: (u: string) => void
   onScanQR: () => void
@@ -310,6 +323,10 @@ export function DevLauncherProvider({ children }: { children: React.ReactNode })
           setConnectError('Server unreachable')
           return
         }
+        if (reach.kind === 'reachable_bundle') {
+          devCall('openProjectDirect', { url: reach.bundleUrl })
+          return
+        }
         if (reach.kind === 'reachable_no_meta') {
           setConnectError('Server is reachable, but it is not serving Tamer meta.json')
           return
@@ -323,11 +340,6 @@ export function DevLauncherProvider({ children }: { children: React.ReactNode })
   const onSelectRecent = useCallback((recentUrl: string) => {
     'background only'
     setUrlState(recentUrl)
-  }, [])
-
-  const openProjectDirectly = useCallback((bundleUrl: string) => {
-    'background only'
-    devCall('openProjectDirect', { url: bundleUrl })
   }, [])
 
   const onScanQR = useCallback(() => {
@@ -423,10 +435,7 @@ export function DevLauncherProvider({ children }: { children: React.ReactNode })
         const { url: scannedUrl } = JSON.parse(event?.payload ?? '{}')
         const raw = scannedUrl ?? ''
         if (!raw) return
-        const parsed = parseUrl(raw)
-        // Directly open the project with the scanned URL
-        // This bypasses the dev launcher and goes directly to ProjectActivity/ViewController
-        openProjectDirectly(parsed)
+        openProject(raw)
       } catch {}
     }
 
@@ -470,7 +479,7 @@ export function DevLauncherProvider({ children }: { children: React.ReactNode })
       }
       devCall('stopDiscovery')
     }
-  }, [openProject, parseUrl, loadRecentFromNative])
+  }, [openProject, loadRecentFromNative])
 
   const value: DevLauncherContextValue = {
     url,
@@ -492,7 +501,6 @@ export function DevLauncherProvider({ children }: { children: React.ReactNode })
     removeRecentItem,
     connectToUrl,
     openProject,
-    openProjectDirectly,
     showIncompatibleModalForUrl,
     onSelectRecent,
     onScanQR,
