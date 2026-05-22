@@ -131,6 +131,12 @@ export default function ConnectPage() {
           />
         </view>
       </view>
+      <view className="DevLauncher__section" style={{ flexShrink: 0, paddingLeft: '6px', paddingRight: '6px' }}>
+        <text className="DevLauncher__sectionTitle" style={{ color: colors.onSurface, marginBottom: '4px' }}>Servers</text>
+        <text className="DevLauncher__hint" style={{ color: colors.onSurface, marginBottom: '8px' }}>
+          Swipe left on a saved row to delete.
+        </text>
+      </view>
       <scroll-view
         scroll-y
         className="DevLauncher__scrollList"

@@ -236,6 +236,8 @@ class DevClientModule(context: Context) : LynxModule(context) {
 
     private var nsdDiscovery: NsdDiscovery? = null
     private var lastDiscovered: List<DiscoveredServer> = emptyList()
+    private val discoveryHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private var pendingStopRunnable: Runnable? = null
 
     data class CompatibilityResult(val compatible: Boolean, val requiredModules: List<Pair<String, String>>)
 
@@ -691,6 +693,11 @@ class DevClientModule(context: Context) : LynxModule(context) {
 
     @LynxMethod
     fun startDiscovery() {
+        // Cancel any pending stop so rapid stop/start from JS effect churn
+        // doesn't actually tear down the NSD listener (Android caches listener
+        // state and rapid register/unregister breaks discovery permanently).
+        pendingStopRunnable?.let { discoveryHandler.removeCallbacks(it) }
+        pendingStopRunnable = null
         val app = mContext.applicationContext
         if (nsdDiscovery != null) return
         nsdDiscovery = NsdDiscovery(
@@ -704,8 +711,17 @@ class DevClientModule(context: Context) : LynxModule(context) {
 
     @LynxMethod
     fun stopDiscovery() {
-        nsdDiscovery?.stop()
-        nsdDiscovery = null
+        // Debounce stop — if a startDiscovery follows within 500ms (JS re-mount
+        // or strict-mode double-effect), the pending stop is cancelled and the
+        // listener keeps running.
+        pendingStopRunnable?.let { discoveryHandler.removeCallbacks(it) }
+        val runnable = Runnable {
+            nsdDiscovery?.stop()
+            nsdDiscovery = null
+            pendingStopRunnable = null
+        }
+        pendingStopRunnable = runnable
+        discoveryHandler.postDelayed(runnable, 500)
     }
 
     @LynxMethod

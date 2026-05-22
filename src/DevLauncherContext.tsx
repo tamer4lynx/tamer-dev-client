@@ -480,7 +480,11 @@ export function DevLauncherProvider({ children }: { children: React.ReactNode })
       }
       devCall('stopDiscovery')
     }
-  }, [openProject, loadRecentFromNative])
+    // Intentionally empty deps — discovery should start once per launcher mount
+    // and keep running. Re-running this effect rapidly causes NSD register/unregister
+    // churn on Android (<25ms) which permanently breaks discovery.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const value: DevLauncherContextValue = {
     url,

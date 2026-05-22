@@ -145,53 +145,49 @@ export default function CombinedServerList(props: Props) {
 
   const subtitleColor = colors.onSurfaceVariant ?? '#888888'
 
-  return (
-    <view className="DevLauncher__combinedList">
-      <text className="DevLauncher__sectionTitle" style={{ color: colors.onSurface, marginBottom: '8px' }}>
-        Servers
-      </text>
-      {merged.length === 0 ? (
+  if (merged.length === 0) {
+    return (
+      <view className="DevLauncher__combinedList">
         <text className="DevLauncher__hint" style={{ color: colors.onSurface }}>
           Scanning for servers on your network… Saved servers also appear here.
         </text>
-      ) : (
-        <>
-          <text className="DevLauncher__hint" style={{ color: colors.onSurface, marginBottom: '8px' }}>
-            Swipe left on a saved row to delete.
-          </text>
-          <view className="DevLauncher__recentList">
-            {merged.map((m) =>
-              m.saved ? (
-                <RecentSwipeRow
-                  key={m.key}
-                  title={m.title}
-                  subtitle={m.subtitle}
-                  iconUrl={m.iconUrl}
-                  dotClass={m.dotClass}
-                  surfaceColor={colors.surfaceContainer ?? '#1e1e1e'}
-                  titleColor={colors.onSurface ?? '#fff'}
-                  subtitleColor={subtitleColor}
-                  onConnect={() => handleSelect(m.url, m.compatible)}
-                  onRemove={() => removeRecentItem(m.url)}
-                />
-              ) : (
-                <ServerListRow
-                  key={m.key}
-                  dotClass={m.dotClass}
-                  iconUrl={m.iconUrl}
-                  title={m.title}
-                  subtitle={m.subtitle ?? m.url}
-                  surfaceColor={colors.surfaceContainer ?? '#1e1e1e'}
-                  borderColor={colors.surfaceContainer ?? '#1e1e1e'}
-                  titleColor={colors.onSurface ?? '#fff'}
-                  subtitleColor={subtitleColor}
-                  onPress={() => handleSelect(m.url, m.compatible)}
-                />
-              ),
-            )}
-          </view>
-        </>
-      )}
+      </view>
+    )
+  }
+
+  return (
+    <view className="DevLauncher__combinedList">
+      <view className="DevLauncher__recentList">
+        {merged.map((m) =>
+          m.saved ? (
+            <RecentSwipeRow
+              key={m.key}
+              title={m.title}
+              subtitle={m.subtitle}
+              iconUrl={m.iconUrl}
+              dotClass={m.dotClass}
+              surfaceColor={colors.surfaceContainer ?? '#1e1e1e'}
+              titleColor={colors.onSurface ?? '#fff'}
+              subtitleColor={subtitleColor}
+              onConnect={() => handleSelect(m.url, m.compatible)}
+              onRemove={() => removeRecentItem(m.url)}
+            />
+          ) : (
+            <ServerListRow
+              key={m.key}
+              dotClass={m.dotClass}
+              iconUrl={m.iconUrl}
+              title={m.title}
+              subtitle={m.subtitle ?? m.url}
+              surfaceColor={colors.surfaceContainer ?? '#1e1e1e'}
+              borderColor={colors.surfaceContainer ?? '#1e1e1e'}
+              titleColor={colors.onSurface ?? '#fff'}
+              subtitleColor={subtitleColor}
+              onPress={() => handleSelect(m.url, m.compatible)}
+            />
+          ),
+        )}
+      </view>
     </view>
   )
 }
