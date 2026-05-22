@@ -4,6 +4,7 @@ import android.app.Application
 import android.content.Context
 import android.net.nsd.NsdManager
 import android.net.nsd.NsdServiceInfo
+import android.net.wifi.WifiManager
 import android.util.Log
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -38,6 +39,8 @@ class NsdDiscovery(
 ) {
     private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
     private val nsdManager = application.getSystemService(Context.NSD_SERVICE) as? NsdManager
+    private val wifiManager = application.applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
+    private var multicastLock: WifiManager.MulticastLock? = null
     private val httpClient = OkHttpClient.Builder()
         .connectTimeout(5, TimeUnit.SECONDS)
         .readTimeout(5, TimeUnit.SECONDS)
@@ -83,6 +86,14 @@ class NsdDiscovery(
             return
         }
         if (isDiscovering) return
+        try {
+            multicastLock = wifiManager?.createMulticastLock("tamer-mdns")?.apply {
+                setReferenceCounted(false)
+                acquire()
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "MulticastLock acquire failed: ${e.message}")
+        }
         nsdManager.discoverServices(SERVICE_TYPE, NsdManager.PROTOCOL_DNS_SD, discoveryListener)
         isDiscovering = true
         startHealthCheck()
@@ -91,6 +102,12 @@ class NsdDiscovery(
     fun stop() {
         if (!isDiscovering) return
         nsdManager?.stopServiceDiscovery(discoveryListener)
+        try {
+            multicastLock?.takeIf { it.isHeld }?.release()
+        } catch (e: Exception) {
+            Log.w(TAG, "MulticastLock release failed: ${e.message}")
+        }
+        multicastLock = null
         isDiscovering = false
         healthCheckJob?.cancel()
         healthCheckJob = null
