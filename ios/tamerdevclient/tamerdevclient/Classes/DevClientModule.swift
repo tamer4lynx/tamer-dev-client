@@ -1,6 +1,7 @@
 import Foundation
 import Lynx
 import AVFoundation
+import CryptoKit
 
 private final class BonjourResolver: NSObject, NetServiceBrowserDelegate, NetServiceDelegate {
     var onServersChanged: (([[String: String]]) -> Void)?
@@ -235,8 +236,18 @@ public final class DevClientModule: NSObject, LynxModule {
         return req
     }
 
+    static func devServerProbeBaseForMeta(_ url: String) -> String {
+        var t = url.trimmingCharacters(in: .whitespacesAndNewlines)
+        while t.hasSuffix("/") { t.removeLast() }
+        if t.lowercased().hasSuffix(".lynx.bundle"), let i = t.lastIndex(of: "/") {
+            t = String(t[..<i])
+            while t.hasSuffix("/") { t.removeLast() }
+        }
+        return t
+    }
+
     private static func packagerRunningSync(_ baseUrl: String) -> Bool {
-        let trimmed = baseUrl.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        let trimmed = Self.devServerProbeBaseForMeta(baseUrl).trimmingCharacters(in: CharacterSet(charactersIn: "/"))
         guard let url = URL(string: trimmed + "/status") else { return false }
         let sem = DispatchSemaphore(value: 0)
         var running = false
@@ -251,7 +262,7 @@ public final class DevClientModule: NSObject, LynxModule {
     }
 
     private static func fetchMetaJsonSync(_ baseUrl: String) -> [String: Any]? {
-        let trimmed = baseUrl.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        let trimmed = Self.devServerProbeBaseForMeta(baseUrl).trimmingCharacters(in: CharacterSet(charactersIn: "/"))
         guard let url = URL(string: trimmed + "/meta.json") else { return nil }
         let sem = DispatchSemaphore(value: 0)
         var result: [String: Any]?
@@ -369,13 +380,7 @@ public final class DevClientModule: NSObject, LynxModule {
     }
 
     @objc func setDevServerUrl(_ url: String) {
-        var normalized = url.trimmingCharacters(in: .whitespaces)
-        if normalized.hasSuffix("/main.lynx.bundle") {
-            normalized = String(normalized.dropLast("/main.lynx.bundle".count))
-        } else if normalized.hasSuffix("main.lynx.bundle") {
-            normalized = String(normalized.dropLast("main.lynx.bundle".count))
-                .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-        }
+        let normalized = url.trimmingCharacters(in: .whitespacesAndNewlines)
         NSLog("[DevClientModule] setDevServerUrl normalized=%@", normalized)
         DevServerPrefs.setUrl(normalized)
     }
@@ -435,13 +440,7 @@ public final class DevClientModule: NSObject, LynxModule {
     }
 
     @objc func openProjectDirect(_ bundleUrl: String) {
-        var normalized = bundleUrl.trimmingCharacters(in: .whitespaces)
-        if normalized.hasSuffix("/main.lynx.bundle") {
-            normalized = String(normalized.dropLast("/main.lynx.bundle".count))
-        } else if normalized.hasSuffix("main.lynx.bundle") {
-            normalized = String(normalized.dropLast("main.lynx.bundle".count))
-                .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-        }
+        let normalized = bundleUrl.trimmingCharacters(in: .whitespacesAndNewlines)
         let accepted = DevClientModule.claimProjectOpenRequest()
         NSLog("[DevClientModule] openProjectDirect normalized=%@ handlerPresent=%@ accepted=%@", normalized, DevClientModule.openProjectDirectHandler == nil ? "false" : "true", accepted ? "true" : "false")
         guard accepted else {
@@ -515,7 +514,7 @@ public final class DevClientModule: NSObject, LynxModule {
         NSLog("[DevClientModule] checkServerCompatibility baseUrl=%@", baseUrl)
         DispatchQueue.global(qos: .utility).async {
             let supported = DevClientModule.supportedModuleClassNamesSnapshot()
-            let trimmed = baseUrl.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+            let trimmed = Self.devServerProbeBaseForMeta(baseUrl).trimmingCharacters(in: CharacterSet(charactersIn: "/"))
             guard let url = URL(string: trimmed + "/meta.json") else {
                 DispatchQueue.main.async {
                     NSLog("[DevClientModule] compatibility invalidMetaUrl baseUrl=%@", baseUrl)
@@ -631,7 +630,10 @@ public final class DevServerPrefs {
     private static var defaults: UserDefaults { UserDefaults(suiteName: suite) ?? .standard }
 
     public static func getProjectInitDataJson() -> String {
-        defaults.string(forKey: keyProjectInitData) ?? "{}"
+        withDevRuntimeInitData(
+            baseJson: defaults.string(forKey: keyProjectInitData) ?? "{}",
+            bundleUrl: getUrl()?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        )
     }
 
     public static func getProjectInitTemplateData() -> LynxTemplateData {
@@ -640,6 +642,22 @@ public final class DevServerPrefs {
 
     public static func getUrl() -> String? {
         defaults.string(forKey: keyUrl)
+    }
+
+    #if DEBUG
+    public static func projectLynxTemplateKey() -> String {
+        guard let raw = getUrl()?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty else {
+            return "main.lynx.bundle"
+        }
+        return "\(sha12Hex(raw))/main.lynx.bundle"
+    }
+    #else
+    public static func projectLynxTemplateKey() -> String { "main.lynx.bundle" }
+    #endif
+
+    private static func sha12Hex(_ s: String) -> String {
+        let digest = SHA256.hash(data: Data(s.utf8))
+        return digest.prefix(6).map { String(format: "%02x", $0) }.joined()
     }
 
     public static func setUrl(_ url: String) {
@@ -735,7 +753,7 @@ public final class DevServerPrefs {
     }
 
     private static func fetchMetaDict(url base: String) -> [String: Any]? {
-        let trimmed = base.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        let trimmed = DevClientModule.devServerProbeBaseForMeta(base).trimmingCharacters(in: CharacterSet(charactersIn: "/"))
         guard let u = URL(string: trimmed + "/meta.json") else { return nil }
         let sem = DispatchSemaphore(value: 0)
         var out: [String: Any]?
@@ -760,14 +778,45 @@ public final class DevServerPrefs {
         return entry
     }
 
-    private static func buildProjectInitData(_ meta: [String: Any]?) -> String {
-        guard let meta = meta else { return "{}" }
-        var o: [String: String] = [:]
+    private static func buildProjectInitData(_ meta: [String: Any]?, bundleUrl: String) -> String {
+        var o: [String: Any] = devRuntimeInitData(bundleUrl: bundleUrl)
+        guard let meta = meta else {
+            return encodeInitData(o)
+        }
         if let s = meta["tamerAppKey"] as? String, !s.isEmpty { o["tamerAppKey"] = s }
         if let s = meta["androidPackageName"] as? String, !s.isEmpty { o["androidPackageName"] = s }
         if let s = meta["iosBundleId"] as? String, !s.isEmpty { o["iosBundleId"] = s }
-        guard !o.isEmpty,
-              let data = try? JSONSerialization.data(withJSONObject: o),
+        return encodeInitData(o)
+    }
+
+    private static func devRuntimeInitData(bundleUrl: String) -> [String: Any] {
+        var runtime: [String: Any] = [
+            "host": "tamer-dev-client",
+            "env": "development"
+        ]
+        if !bundleUrl.isEmpty {
+            runtime["bundleUrl"] = bundleUrl
+        }
+        var root: [String: Any] = ["__tamerRuntime": runtime]
+        if !bundleUrl.isEmpty {
+            root["bundleUrl"] = bundleUrl
+        }
+        return root
+    }
+
+    private static func withDevRuntimeInitData(baseJson: String, bundleUrl: String) -> String {
+        var root: [String: Any] = [:]
+        if let data = baseJson.data(using: .utf8),
+           let parsed = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            root = parsed
+        }
+        devRuntimeInitData(bundleUrl: bundleUrl).forEach { root[$0.key] = $0.value }
+        return encodeInitData(root)
+    }
+
+    private static func encodeInitData(_ object: [String: Any]) -> String {
+        guard !object.isEmpty,
+              let data = try? JSONSerialization.data(withJSONObject: object),
               let str = String(data: data, encoding: .utf8) else { return "{}" }
         return str
     }
@@ -792,7 +841,7 @@ public final class DevServerPrefs {
 
     private static func enrichRecentWithMeta(_ normalizedUrl: String) {
         let meta = fetchMetaDict(url: normalizedUrl)
-        let initJson = buildProjectInitData(meta)
+        let initJson = buildProjectInitData(meta, bundleUrl: normalizedUrl)
         defaults.set(initJson, forKey: keyProjectInitData)
         let key = (meta?["tamerAppKey"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty
         let icon = (meta?["icon"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty

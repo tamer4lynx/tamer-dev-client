@@ -69,30 +69,53 @@ class DevTemplateProvider: NSObject, LynxTemplateProvider, LynxTemplateResourceF
                              userInfo: [NSLocalizedDescriptionKey: "Bundle not found: \(rel)"]))
     }
 
-    private func loadFromDevServer(url: String?) -> Data? {
-        guard let url = normalizeBundlePath(url),
-              let devUrl = DevServerPrefs.getUrl(),
-              !devUrl.isEmpty else { return nil }
-
-        let origin: String
-        let configuredPath: String
-        if let parsed = URL(string: devUrl) {
-            let scheme = parsed.scheme ?? "http"
-            let host = parsed.host ?? "localhost"
-            let port = parsed.port.map { ":\($0)" } ?? ""
-            origin = "\(scheme)://\(host)\(port)"
-            configuredPath = parsed.path.replacingOccurrences(of: "/+$", with: "", options: .regularExpression)
-        } else {
-            origin = devUrl
-            configuredPath = ""
+    private static func canonicalMainBundleRequestPath(_ normalized: String) -> String {
+        guard let r = normalized.range(of: "/main.lynx.bundle", options: [.backwards, .caseInsensitive]) else {
+            return normalized
         }
+        let prefix = String(normalized[..<r.lowerBound])
+        if prefix.count == 12, prefix.range(of: "^[a-fA-F0-9]{12}$", options: .regularExpression) != nil {
+            return "main.lynx.bundle"
+        }
+        return normalized
+    }
+
+    private func loadFromDevServer(url: String?) -> Data? {
+        guard var pathPart = normalizeBundlePath(url) else { return nil }
+        pathPart = Self.canonicalMainBundleRequestPath(pathPart)
+        guard let devRaw = DevServerPrefs.getUrl(),
+              !devRaw.isEmpty else { return nil }
+
+        let trimmedDev = devRaw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let parsed = URL(string: trimmedDev) else { return nil }
+
+        let scheme = parsed.scheme ?? "http"
+        let host = parsed.host ?? "localhost"
+        let port = parsed.port.map { ":\($0)" } ?? ""
+        let origin = "\(scheme)://\(host)\(port)"
+        var rawPath = parsed.path
+        while rawPath.hasSuffix("/") { rawPath.removeLast() }
+
+        func pathEndsWithLynxBundle(_ path: String) -> Bool {
+            path.lowercased().hasSuffix(".lynx.bundle")
+        }
+
+        if pathEndsWithLynxBundle(rawPath), pathPart.caseInsensitiveCompare("main.lynx.bundle") == .orderedSame {
+            return httpFetch(url: trimmedDev)
+        }
+
+        var configuredPath = rawPath
+        if pathEndsWithLynxBundle(rawPath), let idx = rawPath.lastIndex(of: "/") {
+            configuredPath = String(rawPath[..<idx])
+        }
+        configuredPath = configuredPath.replacingOccurrences(of: "/+$", with: "", options: .regularExpression)
 
         var candidates: [String] = []
         if !configuredPath.isEmpty {
-            candidates.append("\(configuredPath)/\(url)")
+            candidates.append("\(configuredPath)/\(pathPart)")
         }
-        candidates.append("/{{PROJECT_BUNDLE_SEGMENT}}/\(url)")
-        candidates.append("/\(url)")
+        candidates.append("/{{PROJECT_BUNDLE_SEGMENT}}/\(pathPart)")
+        candidates.append("/\(pathPart)")
         for candidate in candidates {
             if let data = httpFetch(url: origin + candidate) {
                 return data

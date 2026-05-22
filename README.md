@@ -51,6 +51,30 @@ Uses **lynx.ext.json**. Run `t4l link` after adding to your app.
 
 iOS template `ios/templates/LynxInitProcessor.swift` ships with **empty** `GENERATED IMPORTS` / `GENERATED AUTOLINK` sections; `t4l link ios` fills them from discovered native packages. Do not commit a hand-written list of `globalConfig.register(...)` into that template — regenerate via link when dependencies change.
 
+### iOS: TamerRelogLogService wiring
+
+The generated `ProjectViewController.swift` (from `t4l ios create`) includes log-relay lifecycle hooks. If you wire `tamer-dev-client` into a custom view controller, replicate the same calls:
+
+```swift
+override func viewDidLoad() {
+    super.viewDidLoad()
+    TamerRelogLogService.connect()
+    // ...
+}
+
+func reloadLynxView() {
+    TamerRelogLogService.disconnect()
+    // ...
+}
+
+override func viewWillDisappear(_ animated: Bool) {
+    super.viewWillDisappear(animated)
+    TamerRelogLogService.disconnect()
+}
+```
+
+`TamerRelogLogService` is declared `internal` (not `private`) so `DevServerPrefs.fetchMetaDict` can call `devServerProbeBaseForMeta` from the same module without requiring a separate import.
+
 ## Troubleshooting
 
 ### Build fails with "Invariant failed: Should have main thread asset"

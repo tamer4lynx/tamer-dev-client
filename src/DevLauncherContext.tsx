@@ -2,7 +2,8 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { readBootstrapThemeColors, useThemeColors } from '@tamer4lynx/tamer-system-ui'
 import { devCall, toRequiredModules, type RequiredModule } from './devcall'
 import {
-  normalizeDevServerBase,
+  devServerProbeBase,
+  persistedDevServerUrl,
   probeDevServerReachability,
   probeRecentMetaMatch,
   validateDevServerUrl,
@@ -55,7 +56,7 @@ function discoveredServerKey(server: DiscoveredServer): string {
   if (key) return `key:${key}`
   const name = server.name.trim()
   if (name) return `name:${name}`
-  return `url:${normalizeDevServerBase(server.url)}`
+  return `url:${devServerProbeBase(server.url)}`
 }
 
 function pickPreferredDiscoveredServer(current: DiscoveredServer, next: DiscoveredServer): DiscoveredServer {
@@ -261,7 +262,7 @@ export function DevLauncherProvider({ children }: { children: React.ReactNode })
     [refreshRecent]
   )
 
-  const parseUrl = useCallback((input: string): string => normalizeDevServerBase(input), [])
+  const parseUrl = useCallback((input: string): string => persistedDevServerUrl(input), [])
 
   const connectToUrl = useCallback(
     (parsed: string) => {
@@ -317,7 +318,7 @@ export function DevLauncherProvider({ children }: { children: React.ReactNode })
           return
         }
         setConnectError('')
-        const reach = await probeDevServerReachability(validated.parsed)
+        const reach = await probeDevServerReachability(devServerProbeBase(validated.parsed))
         console.error('[DevLauncher] openProject reachability=', reach.kind, 'parsed=', validated.parsed)
         if (reach.kind === 'unreachable') {
           setConnectError('Server unreachable')
@@ -364,7 +365,7 @@ export function DevLauncherProvider({ children }: { children: React.ReactNode })
         entries.map(async (e) => {
           const v = validateDevServerUrl(e.url)
           if (!v.ok) return [e.url, 'offline' as RecentReachability] as const
-          const st = await probeRecentMetaMatch(v.parsed, e.tamerAppKey)
+          const st = await probeRecentMetaMatch(devServerProbeBase(e.url), e.tamerAppKey)
           return [e.url, st as RecentReachability] as const
         })
       )

@@ -130,7 +130,16 @@ object TamerRelogLogService : ILynxLogService {
         val scheme = if (uri.scheme == "https") "wss" else "ws"
         val host = uri.host ?: return null
         val port = if (uri.port > 0) ":${uri.port}" else ""
-        val path = (uri.path ?: "").let { p -> (if (p.endsWith("/")) p else p + "/") + "__hmr" }
+        var rawPath = uri.path ?: ""
+        if (!rawPath.startsWith("/")) rawPath = "/$rawPath"
+        rawPath = rawPath.trimEnd('/')
+        if (rawPath.lowercase().endsWith(".lynx.bundle")) {
+            val i = rawPath.lastIndexOf('/')
+            rawPath = if (i > 0) rawPath.substring(0, i) else ""
+        }
+        if (rawPath.isEmpty()) rawPath = "/"
+        val dir = if (rawPath.endsWith("/")) rawPath else "$rawPath/"
+        val path = "${dir}__hmr"
         return "$scheme://$host$port$path"
     }
 

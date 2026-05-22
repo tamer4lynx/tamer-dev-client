@@ -102,6 +102,7 @@ class ProjectViewController: UIViewController {
             self?.reloadLynxView()
         })
         devClientManager?.connect()
+        TamerRelogLogService.connect()
 #if DEBUG
         view.addGestureRecognizer(projectDevMenuGesture)
 #endif
@@ -124,6 +125,7 @@ class ProjectViewController: UIViewController {
 
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
+        _ = becomeFirstResponder()
         DevClientModule.setProjectActive(true)
         triggerInitialProjectLoadIfNeeded(reason: "viewDidAppear")
     }
@@ -155,6 +157,8 @@ class ProjectViewController: UIViewController {
         triggerInitialProjectLoadIfNeeded(reason: "viewSafeAreaInsetsDidChange")
     }
 
+    override var canBecomeFirstResponder: Bool { true }
+
     override var preferredStatusBarStyle: UIStatusBarStyle { SystemUIModule.statusBarStyleForHost }
 
     private func buildLynxView() -> LynxView {
@@ -181,6 +185,13 @@ class ProjectViewController: UIViewController {
     private func setupLynxView() {
         NSLog("[ProjectVC] setupLynxView devUrl=%@", DevServerPrefs.getUrl() ?? "")
 #if canImport(tamernavigation)
+        TamerNavHost.spokeTemplateSrcNormalizer = { s in
+            let t = s.trimmingCharacters(in: .whitespacesAndNewlines)
+            if t.isEmpty || t.caseInsensitiveCompare("main.lynx.bundle") == .orderedSame {
+                return DevServerPrefs.projectLynxTemplateKey()
+            }
+            return s
+        }
         TamerNavHost.configureSharedGroup(TamerNavLynxRuntime.sharedGroup)
         TamerNavHost.configureSpokeBuilder = { builder, src in
             _ = src
@@ -214,6 +225,8 @@ class ProjectViewController: UIViewController {
 
     private func reloadLynxView() {
         NSLog("[ProjectVC] reloadLynxView")
+        devClientManager?.disconnect()
+        TamerRelogLogService.disconnect()
         dismissProjectDevMenu()
         pendingInitialLoadWorkItem?.cancel()
         pendingInitialLoadWorkItem = nil
@@ -228,6 +241,14 @@ class ProjectViewController: UIViewController {
         lynxView = nil
         setupLynxView()
         triggerInitialProjectLoadIfNeeded(reason: "reloadLynxView")
+        devClientManager?.connect()
+    }
+
+    /// Called by the dev launcher when the user picks a different server while this VC is already
+    /// presented. Prefs are updated by `openProjectDirect` before this is invoked.
+    func switchToDevServerAndReload() {
+        NSLog("[ProjectVC] switchToDevServerAndReload devUrl=%@", DevServerPrefs.getUrl() ?? "")
+        reloadLynxView()
     }
 
     private func triggerInitialProjectLoadIfNeeded(reason: String) {
@@ -253,7 +274,7 @@ class ProjectViewController: UIViewController {
         pendingInitialLoadWorkItem = nil
         applyFullscreenLayout(to: lynxView)
         NSLog("[ProjectVC] initial project load reason=%@ bounds=%@ safe=%@", reason, NSCoder.string(for: bounds), NSCoder.string(for: view.safeAreaInsets))
-        lynxView.loadTemplate(fromURL: "main.lynx.bundle", initData: Self.projectInitDataWithInsetsSnapshot())
+        lynxView.loadTemplate(fromURL: DevServerPrefs.projectLynxTemplateKey(), initData: Self.projectInitDataWithInsetsSnapshot())
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self, weak lynxView] in
             guard let self, let lynxView else { return }
             self.logViewport("project post-load", lynxView: lynxView)
@@ -399,11 +420,13 @@ class ProjectViewController: UIViewController {
         guard isBeingDismissed || isMovingFromParent else { return }
         dismissProjectDevMenu()
         devClientManager?.disconnect()
+        TamerRelogLogService.disconnect()
 #if canImport(tamerrouter)
         TamerRouterNativeModule.attachHostView(nil)
 #endif
         TamerInsetsModule.attachHostView(nil)
 #if canImport(tamernavigation)
+        TamerNavHost.spokeTemplateSrcNormalizer = nil
         TamerNavHost.attachRoot(nil, presenter: self)
 #endif
 #if DEBUG

@@ -14,12 +14,45 @@ function withTimeoutMs(ms: number): { signal: AbortSignal; cancel: () => void } 
   return { signal: c.signal, cancel: () => clearTimeout(id) }
 }
 
-export function normalizeDevServerBase(input: string): string {
+/** Trim, strip BOM, map `tamer://` / `tamerdevapp://` → `http://`, ensure `http(s)://` prefix. */
+export function trimDevUrlInput(input: string): string {
   let s = input.trim().replace(/^\uFEFF/, '')
-  if (s.startsWith('tamer://')) s = 'http://' + s.replace('tamer://', '')
+  s = s.replace(/^tamerdevapp:\/\//i, 'http://')
+  s = s.replace(/^tamer:\/\//i, 'http://')
   if (!/^https?:\/\//i.test(s)) s = 'http://' + s
-  s = s.replace(/\/main\.lynx\.bundle\/?$/i, '').replace(/\/+$/, '') || s
   return s
+}
+
+/**
+ * Directory / dev-server base used for meta.json, /status, and `…/main.lynx.bundle` HEAD probes.
+ * Strips a trailing `/*.lynx.bundle` segment or legacy `/main.lynx.bundle`, then trailing slashes.
+ */
+export function devServerProbeBase(input: string): string {
+  let s = trimDevUrlInput(input)
+  if (/\.lynx\.bundle\/?$/i.test(s)) {
+    s = s.replace(/\/[^/?#]+\.lynx\.bundle\/?$/i, '')
+  } else {
+    s = s.replace(/\/main\.lynx\.bundle\/?$/i, '')
+  }
+  s = s.replace(/\/+$/, '') || s
+  return s
+}
+
+/**
+ * URL stored in prefs / recents: keep a full `…/*.lynx.bundle` link when the input targets a bundle file;
+ * otherwise same as {@link devServerProbeBase} (directory / dev server root).
+ */
+export function persistedDevServerUrl(input: string): string {
+  const s = trimDevUrlInput(input)
+  if (/\.lynx\.bundle\/?$/i.test(s)) {
+    return s.replace(/\/+$/, '') || s
+  }
+  return devServerProbeBase(s)
+}
+
+/** @deprecated Use {@link devServerProbeBase} (same behavior). */
+export function normalizeDevServerBase(input: string): string {
+  return devServerProbeBase(input)
 }
 
 export type ValidateUrlResult =
@@ -34,7 +67,7 @@ const DEV_SERVER_HTTP_URL_RE =
   /^https?:\/\/(\[[0-9a-fA-F:.]+\]|[^/?:#\s@]+)(?::(\d{1,5}))?(\/[^\s?#]*)?$/i
 
 export function validateDevServerUrl(input: string): ValidateUrlResult {
-  const parsed = normalizeDevServerBase(input)
+  const parsed = persistedDevServerUrl(input)
   if (!parsed.trim()) return { ok: false, error: 'Enter a server URL' }
   const m = DEV_SERVER_HTTP_URL_RE.exec(parsed)
   if (!m) return { ok: false, error: 'Invalid URL' }
@@ -65,7 +98,8 @@ function bundleUrlForBase(base: string): string {
 }
 
 export async function probeDevServerReachability(baseUrl: string): Promise<ReachabilityResult> {
-  const meta = metaUrlForBase(baseUrl)
+  const probeBase = devServerProbeBase(baseUrl)
+  const meta = metaUrlForBase(probeBase)
   const { signal, cancel } = withTimeoutMs(META_TIMEOUT_MS)
   try {
     const res = await fetch(meta, {
@@ -77,13 +111,13 @@ export async function probeDevServerReachability(baseUrl: string): Promise<Reach
       return { kind: 'reachable_tamer' }
     }
     if (res.status === 404) {
-      const statusResult = await probeStatusOnly(baseUrl)
+      const statusResult = await probeStatusOnly(probeBase)
       if (statusResult.kind !== 'unreachable') return statusResult
-      return probeBundleOnly(baseUrl)
+      return probeBundleOnly(probeBase)
     }
     return { kind: 'unreachable' }
   } catch {
-    return probeBundleOnly(baseUrl)
+    return probeBundleOnly(probeBase)
   } finally {
     cancel()
   }
@@ -137,7 +171,7 @@ export async function probeRecentMetaMatch(
   baseUrl: string,
   expectedTamerAppKey?: string
 ): Promise<RecentMetaMatchStatus> {
-  const meta = metaUrlForBase(baseUrl)
+  const meta = metaUrlForBase(devServerProbeBase(baseUrl))
   const { signal, cancel } = withTimeoutMs(META_TIMEOUT_MS)
   try {
     const res = await fetch(meta, {

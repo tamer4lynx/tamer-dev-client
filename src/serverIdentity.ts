@@ -1,4 +1,4 @@
-import { normalizeDevServerBase } from './devServerUrl'
+import { devServerProbeBase } from './devServerUrl'
 
 export type ServerIdentity = {
   url: string
@@ -8,6 +8,6 @@ export type ServerIdentity = {
 export function serverIdentityKey(server: ServerIdentity): string {
   const key = server.tamerAppKey?.trim()
   if (key) return `key:${key}`
-  return `url:${normalizeDevServerBase(server.url)}`
+  return `url:${devServerProbeBase(server.url)}`
 }
 

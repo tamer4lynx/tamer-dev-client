@@ -34,7 +34,12 @@ class DevClientManager {
         let scheme = (base.scheme == "https") ? "wss" : "ws"
         let host = base.host ?? "localhost"
         let port = base.port.map { ":\($0)" } ?? ""
-        let rawPath = base.path.isEmpty ? "/" : base.path
+        var rawPath = base.path.isEmpty ? "/" : base.path
+        while rawPath.hasSuffix("/") { rawPath.removeLast() }
+        if rawPath.lowercased().hasSuffix(".lynx.bundle"), let idx = rawPath.lastIndex(of: "/") {
+            rawPath = String(rawPath[..<idx])
+        }
+        if rawPath.isEmpty { rawPath = "/" }
         let dir = rawPath.hasSuffix("/") ? rawPath : rawPath + "/"
         guard let wsUrl = URL(string: "\(scheme)://\(host)\(port)\(dir)__hmr") else { return }
 

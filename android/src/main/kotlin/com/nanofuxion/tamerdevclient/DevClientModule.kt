@@ -43,8 +43,25 @@ class DevClientModule(context: Context) : LynxModule(context) {
 
         @JvmStatic
         fun getProjectInitDataJson(context: Context): String {
-            return context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-                .getString(KEY_PROJECT_INIT_DATA, "{}") ?: "{}"
+            val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            val base = prefs.getString(KEY_PROJECT_INIT_DATA, "{}") ?: "{}"
+            val bundleUrl = prefs.getString(KEY_URL, null)?.trim().orEmpty()
+            return withDevRuntimeInitData(base, bundleUrl)
+        }
+
+        private fun withDevRuntimeInitData(baseJson: String, bundleUrl: String): String {
+            val root = try {
+                JSONObject(baseJson)
+            } catch (_: Exception) {
+                JSONObject()
+            }
+            if (bundleUrl.isNotBlank()) root.put("bundleUrl", bundleUrl)
+            root.put("__tamerRuntime", JSONObject().apply {
+                put("host", "tamer-dev-client")
+                put("env", "development")
+                if (bundleUrl.isNotBlank()) put("bundleUrl", bundleUrl)
+            })
+            return root.toString()
         }
 
         @Volatile
@@ -229,9 +246,18 @@ class DevClientModule(context: Context) : LynxModule(context) {
             .build()
     }
 
+    private fun devServerMetaBase(url: String): String {
+        var t = url.trim().trimEnd('/')
+        if (t.endsWith(".lynx.bundle", ignoreCase = true)) {
+            val i = t.lastIndexOf('/')
+            if (i > 0) return t.substring(0, i)
+        }
+        return t
+    }
+
     private fun fetchMetaJSONObject(baseUrl: String, probe: String = "connect-meta"): JSONObject? {
         return try {
-            val metaUrl = baseUrl.trimEnd('/') + "/meta.json"
+            val metaUrl = devServerMetaBase(baseUrl).trimEnd('/') + "/meta.json"
             val request = buildProbeRequest(metaUrl, probe)
             val client = okhttp3.OkHttpClient.Builder()
                 .connectTimeout(5, java.util.concurrent.TimeUnit.SECONDS)
@@ -388,13 +414,7 @@ class DevClientModule(context: Context) : LynxModule(context) {
 
     @LynxMethod
     fun setDevServerUrl(url: String) {
-        val normalized = url.trim().removeSuffix("/").let { u ->
-            when {
-                u.endsWith("/main.lynx.bundle") -> u.removeSuffix("/main.lynx.bundle")
-                u.endsWith("main.lynx.bundle") -> u.removeSuffix("main.lynx.bundle").trimEnd('/')
-                else -> u
-            }
-        }
+        val normalized = url.trim().trimEnd('/')
         prefs().edit().putString(KEY_URL, normalized).commit()
         mergeRecentImmediate(normalized)
         Thread {
@@ -473,9 +493,15 @@ class DevClientModule(context: Context) : LynxModule(context) {
         }
     }
 
-    private fun buildProjectInitDataJson(meta: JSONObject?): String {
-        if (meta == null) return "{}"
+    private fun buildProjectInitDataJson(meta: JSONObject?, bundleUrl: String): String {
         val o = JSONObject()
+        if (bundleUrl.isNotBlank()) o.put("bundleUrl", bundleUrl)
+        o.put("__tamerRuntime", JSONObject().apply {
+            put("host", "tamer-dev-client")
+            put("env", "development")
+            if (bundleUrl.isNotBlank()) put("bundleUrl", bundleUrl)
+        })
+        if (meta == null) return o.toString()
         meta.optString("tamerAppKey").takeIf { it.isNotBlank() }?.let { o.put("tamerAppKey", it) }
         meta.optString("androidPackageName").takeIf { it.isNotBlank() }?.let { o.put("androidPackageName", it) }
         meta.optString("iosBundleId").takeIf { it.isNotBlank() }?.let { o.put("iosBundleId", it) }
@@ -500,7 +526,7 @@ class DevClientModule(context: Context) : LynxModule(context) {
 
     private fun enrichRecentWithMeta(normalizedUrl: String) {
         val meta = fetchMetaJSONObject(normalizedUrl)
-        prefs().edit().putString(KEY_PROJECT_INIT_DATA, buildProjectInitDataJson(meta)).apply()
+        prefs().edit().putString(KEY_PROJECT_INIT_DATA, buildProjectInitDataJson(meta, normalizedUrl)).apply()
         val key = meta?.optString("tamerAppKey")?.takeIf { it.isNotBlank() }
         val icon = meta?.optString("icon")?.takeIf { it.isNotBlank() }
         val label = meta?.optString("name")?.takeIf { it.isNotBlank() }
@@ -614,6 +640,9 @@ class DevClientModule(context: Context) : LynxModule(context) {
     fun reloadWithProjectBundle() {
         val launcher = reloadProjectLauncher
         val activity = hostActivity
+        if (BuildConfig.DEBUG) {
+            Log.d(TAG, "reloadWithProjectBundle launcherPresent=${launcher != null} activity=${activity?.javaClass?.simpleName ?: "<none>"}")
+        }
         if (launcher != null && activity != null) {
             activity.runOnUiThread { launcher.run() }
         } else {
@@ -623,13 +652,7 @@ class DevClientModule(context: Context) : LynxModule(context) {
 
     @LynxMethod
     fun openProjectDirect(bundleUrl: String) {
-        var normalized = bundleUrl.trim().removeSuffix("/").let { u ->
-            when {
-                u.endsWith("/main.lynx.bundle") -> u.removeSuffix("/main.lynx.bundle")
-                u.endsWith("main.lynx.bundle") -> u.removeSuffix("main.lynx.bundle").trimEnd('/')
-                else -> u
-            }
-        }
+        val normalized = bundleUrl.trim().trimEnd('/')
         // Store the URL and open project
         prefs().edit().putString(KEY_URL, normalized).commit()
         mergeRecentImmediate(normalized)
@@ -641,12 +664,16 @@ class DevClientModule(context: Context) : LynxModule(context) {
         }.start()
         // Invoke the launcher to open ProjectActivity with the URL
         val activity = hostActivity
+        val launcher = openProjectDirectLauncher
+        if (BuildConfig.DEBUG) {
+            Log.d(TAG, "openProjectDirect normalized=$normalized launcherPresent=${launcher != null} activity=${activity?.javaClass?.simpleName ?: "<none>"}")
+        }
         if (activity != null) {
             activity.runOnUiThread {
-                openProjectDirectLauncher?.invoke(normalized)
+                launcher?.invoke(normalized)
             }
         } else {
-            openProjectDirectLauncher?.invoke(normalized)
+            launcher?.invoke(normalized)
         }
     }
 

@@ -87,17 +87,53 @@ public class TemplateProvider extends AbsTemplateProvider {
         return loadAssetBytes(normalizeAssetPath(url));
     }
 
+    private static boolean pathEndsWithLynxBundle(String path) {
+        if (path == null) return false;
+        String p = path.replaceAll("/+$", "");
+        return p.toLowerCase().endsWith(".lynx.bundle");
+    }
+
+    private static String canonicalMainBundleRequestPath(String normalized) {
+        if (normalized == null) return "";
+        int i = normalized.toLowerCase().lastIndexOf("/main.lynx.bundle");
+        if (i <= 0) return normalized;
+        String prefix = normalized.substring(0, i);
+        if (prefix.length() == 12 && prefix.matches("[a-fA-F0-9]{12}")) {
+            return "main.lynx.bundle";
+        }
+        return normalized;
+    }
+
     private byte[] loadFromDevServer(String url) {
         String devUrl = DevServerPrefs.INSTANCE.getUrl(context);
         if (devUrl == null || devUrl.isEmpty()) return null;
         try {
-            java.net.URL u = new java.net.URL(devUrl.trim());
+            String trimmedDev = devUrl.trim();
+            java.net.URL u = new java.net.URL(trimmedDev);
             int port = u.getPort();
             String host = u.getHost() != null ? u.getHost() : "127.0.0.1";
             String scheme = u.getProtocol() != null ? u.getProtocol() : "http";
             String origin = scheme + "://" + host + (port > 0 ? ":" + port : ("http".equalsIgnoreCase(scheme) ? ":3000" : ""));
-            String configuredPath = u.getPath() != null ? u.getPath().replaceAll("/+$", "") : "";
-            String normalized = normalizeAssetPath(url);
+            String rawPath = u.getPath() != null ? u.getPath().replaceAll("/+$", "") : "";
+            String normalized = canonicalMainBundleRequestPath(normalizeAssetPath(url));
+            if (pathEndsWithLynxBundle(rawPath) && "main.lynx.bundle".equalsIgnoreCase(normalized)) {
+                okhttp3.OkHttpClient client = new okhttp3.OkHttpClient.Builder()
+                    .connectTimeout(10, java.util.concurrent.TimeUnit.SECONDS)
+                    .readTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
+                    .build();
+                okhttp3.Request request = new okhttp3.Request.Builder().url(trimmedDev).build();
+                try (okhttp3.Response response = client.newCall(request).execute()) {
+                    if (response.isSuccessful() && response.body() != null) {
+                        return response.body().bytes();
+                    }
+                }
+                return null;
+            }
+            String configuredPath = rawPath;
+            if (pathEndsWithLynxBundle(rawPath)) {
+                int slash = rawPath.lastIndexOf('/');
+                configuredPath = slash > 0 ? rawPath.substring(0, slash) : "";
+            }
             java.util.ArrayList<String> candidatePaths = new java.util.ArrayList<>();
             if (!configuredPath.isEmpty()) candidatePaths.add(configuredPath + "/" + normalized);
             if (!PROJECT_BUNDLE_SEGMENT.isEmpty()) candidatePaths.add("/" + PROJECT_BUNDLE_SEGMENT + "/" + normalized);

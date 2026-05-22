@@ -126,9 +126,14 @@ public final class TamerRelogLogService: NSObject {
         let wsScheme = scheme == "https" ? "wss" : "ws"
         let port = url.port ?? 0
         let portPart = port > 0 ? ":\(port)" : ""
-        var path = url.path
-        if !path.hasSuffix("/") { path += "/" }
-        path += "__hmr"
+        var rawPath = url.path
+        while rawPath.hasSuffix("/") { rawPath.removeLast() }
+        if rawPath.lowercased().hasSuffix(".lynx.bundle"), let idx = rawPath.lastIndex(of: "/") {
+            rawPath = String(rawPath[..<idx])
+        }
+        if rawPath.isEmpty { rawPath = "/" }
+        let dir = rawPath.hasSuffix("/") ? rawPath : rawPath + "/"
+        let path = "\(dir)__hmr"
         let wsString = "\(wsScheme)://\(host)\(portPart)\(path)"
         return URL(string: wsString)
     }

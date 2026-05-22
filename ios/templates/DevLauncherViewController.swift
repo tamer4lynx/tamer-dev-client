@@ -108,8 +108,9 @@ class DevLauncherViewController: UIViewController {
         if let bundleUrl, !bundleUrl.isEmpty {
             DevServerPrefs.setUrl(bundleUrl)
         }
-        if presentedViewController is ProjectViewController {
-            NSLog("[DevLauncher] presentProjectViewController skipped already presenting project")
+        if let projectVC = presentedViewController as? ProjectViewController {
+            NSLog("[DevLauncher] presentProjectViewController reload in presented project")
+            projectVC.switchToDevServerAndReload()
             return
         }
         guard presentedViewController == nil else {

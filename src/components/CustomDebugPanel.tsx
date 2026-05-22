@@ -667,7 +667,6 @@ export function CustomDebugPanel({
 
   const panelStyle = {
     width: '88%',
-    maxHeight: '85%',
     backgroundColor: palette.surfaceContainer ?? '#1e1e1e',
     borderRadius: '16rpx',
     padding: '32rpx',
@@ -741,7 +740,7 @@ export function CustomDebugPanel({
           </text>
         ) : null}
 
-        <scroll-view scroll-y style={scrollStyle}>
+        <view style={{ width: '100%' }}>
           <text
             style={{
               fontSize: '24rpx',
@@ -817,7 +816,7 @@ export function CustomDebugPanel({
             barColor={cpuColor}
             fixedMax={100}
           />
-        </scroll-view>
+        </view>
 
         <view
           style={{
