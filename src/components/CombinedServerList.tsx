@@ -29,6 +29,32 @@ type Props = {
   removeRecentItem: (url: string) => void
 }
 
+type MergedEntry = {
+  key: string
+  url: string
+  title: string
+  subtitle: string | undefined
+  iconUrl: string | undefined
+  compatible: boolean
+  dotClass: string
+  saved: boolean
+}
+
+function dotClassForReachability(st: RecentReachability | undefined): string {
+  switch (st) {
+    case 'matched':
+      return 'DevLauncher__statusDot DevLauncher__statusDot--online'
+    case 'offline':
+      return 'DevLauncher__statusDot DevLauncher__statusDot--offline'
+    case 'mismatch':
+      return 'DevLauncher__statusDot DevLauncher__statusDot--mismatch'
+    case 'stale':
+      return 'DevLauncher__statusDot DevLauncher__statusDot--stale'
+    default:
+      return 'DevLauncher__statusDot DevLauncher__statusDot--checking'
+  }
+}
+
 export default function CombinedServerList(props: Props) {
   const {
     theme,
@@ -45,32 +71,68 @@ export default function CombinedServerList(props: Props) {
   const { replace } = useTamerNavigate()
   const colors = resolveTheme(theme)
 
-  const discoveredUrls = useMemo(
-    () =>
-      new Set(
-        discoveredServers.map((s) =>
-          serverIdentityKey({ url: parseUrl(s.url), tamerAppKey: s.tamerAppKey })
-        ),
-      ),
-    [discoveredServers, parseUrl],
-  )
+  const recentByKey = useMemo(() => {
+    const m = new Map<string, RecentEntry>()
+    for (const e of recentEntries) {
+      m.set(serverIdentityKey({ url: parseUrl(e.url), tamerAppKey: e.tamerAppKey }), e)
+    }
+    return m
+  }, [recentEntries, parseUrl])
 
-  const recentNotInDiscovered = useMemo(
-    () =>
-      recentEntries.filter(
-        (e) =>
-          !discoveredUrls.has(
-            serverIdentityKey({ url: parseUrl(e.url), tamerAppKey: e.tamerAppKey }),
-          ),
-      ),
-    [recentEntries, discoveredUrls, parseUrl],
-  )
+  const merged: MergedEntry[] = useMemo(() => {
+    const out: MergedEntry[] = []
+    const seen = new Set<string>()
 
-  const handleDiscoverSelect = useCallback(
-    (rawUrl: string, isCompatible: boolean) => {
+    // 1. Discovered first (live) — merge with saved metadata if URL already saved
+    for (const s of discoveredServers) {
+      const parsed = parseUrl(s.url)
+      const key = serverIdentityKey({ url: parsed, tamerAppKey: s.tamerAppKey })
+      if (seen.has(key)) continue
+      seen.add(key)
+      const saved = recentByKey.get(key)
+      const compatible = s.compatible !== false
+      const dotClass = compatible
+        ? 'DevLauncher__statusDot DevLauncher__statusDot--online'
+        : 'DevLauncher__statusDot DevLauncher__statusDot--offline'
+      out.push({
+        key,
+        url: s.url,
+        title: saved?.label?.trim() ? saved.label : (s.name || s.url),
+        subtitle: saved?.label?.trim() ? s.url : undefined,
+        iconUrl: isBundleUrl(s.url) ? lynxIconMono : (recentRowIconSrc[s.url] ?? saved?.iconUrl ?? s.iconUrl),
+        compatible,
+        dotClass,
+        saved: !!saved,
+      })
+    }
+
+    // 2. Saved-only (not currently discovered)
+    for (const e of recentEntries) {
+      const parsed = parseUrl(e.url)
+      const key = serverIdentityKey({ url: parsed, tamerAppKey: e.tamerAppKey })
+      if (seen.has(key)) continue
+      seen.add(key)
+      const st = recentReachability[e.url]
+      out.push({
+        key,
+        url: e.url,
+        title: e.label?.trim() ? e.label : e.url,
+        subtitle: e.label?.trim() ? e.url : undefined,
+        iconUrl: isBundleUrl(e.url) ? lynxIconMono : (recentRowIconSrc[e.url] ?? e.iconUrl),
+        compatible: st !== 'mismatch',
+        dotClass: dotClassForReachability(st),
+        saved: true,
+      })
+    }
+
+    return out
+  }, [discoveredServers, recentEntries, recentByKey, recentReachability, recentRowIconSrc, parseUrl])
+
+  const handleSelect = useCallback(
+    (rawUrl: string, compatible: boolean) => {
       'background only'
       const parsed = parseUrl(rawUrl)
-      if (!isCompatible) {
+      if (!compatible) {
         showIncompatibleModalForUrl(parsed)
         return
       }
@@ -81,95 +143,52 @@ export default function CombinedServerList(props: Props) {
     [parseUrl, setUrl, replace, openProject, showIncompatibleModalForUrl],
   )
 
-  const handleRecentSelect = useCallback(
-    (rawUrl: string) => {
-      'background only'
-      const parsed = parseUrl(rawUrl)
-      setUrl(parsed)
-      replace('/')
-      openProject(rawUrl)
-    },
-    [parseUrl, setUrl, replace, openProject],
-  )
-
   const subtitleColor = colors.onSurfaceVariant ?? '#888888'
 
   return (
     <view className="DevLauncher__combinedList">
       <text className="DevLauncher__sectionTitle" style={{ color: colors.onSurface, marginBottom: '8px' }}>
-        Discovered
+        Servers
       </text>
-      {discoveredServers.length === 0 ? (
-        <text className="DevLauncher__hint" style={{ color: colors.onSurface, marginBottom: '16px' }}>
-          Scanning for servers on your network…
-        </text>
-      ) : (
-        <view className="DevLauncher__recentList" style={{ marginBottom: '16px' }}>
-          {discoveredServers.map((s) => {
-            const compatible = s.compatible !== false
-            const dotClass = compatible
-              ? 'DevLauncher__statusDot DevLauncher__statusDot--online'
-              : 'DevLauncher__statusDot DevLauncher__statusDot--offline'
-            return (
-              <ServerListRow
-                key={s.url}
-                dotClass={dotClass}
-                iconUrl={isBundleUrl(s.url) ? lynxIconMono : s.iconUrl}
-                title={s.name || s.url}
-                subtitle={s.url}
-                surfaceColor={colors.surfaceContainer ?? '#1e1e1e'}
-                borderColor={colors.surfaceContainer ?? '#1e1e1e'}
-                titleColor={colors.onSurface ?? '#fff'}
-                subtitleColor={subtitleColor}
-                onPress={() => handleDiscoverSelect(s.url, compatible)}
-              />
-            )
-          })}
-        </view>
-      )}
-
-      <text className="DevLauncher__sectionTitle" style={{ color: colors.onSurface, marginBottom: '8px' }}>
-        Recent
-      </text>
-      {recentNotInDiscovered.length === 0 ? (
+      {merged.length === 0 ? (
         <text className="DevLauncher__hint" style={{ color: colors.onSurface }}>
-          No recent servers yet. Connect above or open a discovered server.
+          Scanning for servers on your network… Saved servers also appear here.
         </text>
       ) : (
         <>
           <text className="DevLauncher__hint" style={{ color: colors.onSurface, marginBottom: '8px' }}>
-            Swipe left on a row to delete.
+            Swipe left on a saved row to delete.
           </text>
           <view className="DevLauncher__recentList">
-            {recentNotInDiscovered.map((e) => {
-              const st = recentReachability[e.url] ?? 'checking'
-              const dotClass =
-                st === 'matched'
-                  ? 'DevLauncher__statusDot DevLauncher__statusDot--online'
-                  : st === 'offline'
-                    ? 'DevLauncher__statusDot DevLauncher__statusDot--offline'
-                    : st === 'mismatch'
-                      ? 'DevLauncher__statusDot DevLauncher__statusDot--mismatch'
-                      : st === 'stale'
-                        ? 'DevLauncher__statusDot DevLauncher__statusDot--stale'
-                        : 'DevLauncher__statusDot DevLauncher__statusDot--checking'
-              const title = e.label?.trim() ? e.label : e.url
-              const subtitle = e.label?.trim() ? e.url : undefined
-              return (
+            {merged.map((m) =>
+              m.saved ? (
                 <RecentSwipeRow
-                  key={e.url}
-                  title={title}
-                  subtitle={subtitle}
-                  iconUrl={isBundleUrl(e.url) ? lynxIconMono : (recentRowIconSrc[e.url] ?? e.iconUrl)}
-                  dotClass={dotClass}
+                  key={m.key}
+                  title={m.title}
+                  subtitle={m.subtitle}
+                  iconUrl={m.iconUrl}
+                  dotClass={m.dotClass}
                   surfaceColor={colors.surfaceContainer ?? '#1e1e1e'}
                   titleColor={colors.onSurface ?? '#fff'}
                   subtitleColor={subtitleColor}
-                  onConnect={() => handleRecentSelect(e.url)}
-                  onRemove={() => removeRecentItem(e.url)}
+                  onConnect={() => handleSelect(m.url, m.compatible)}
+                  onRemove={() => removeRecentItem(m.url)}
                 />
-              )
-            })}
+              ) : (
+                <ServerListRow
+                  key={m.key}
+                  dotClass={m.dotClass}
+                  iconUrl={m.iconUrl}
+                  title={m.title}
+                  subtitle={m.subtitle ?? m.url}
+                  surfaceColor={colors.surfaceContainer ?? '#1e1e1e'}
+                  borderColor={colors.surfaceContainer ?? '#1e1e1e'}
+                  titleColor={colors.onSurface ?? '#fff'}
+                  subtitleColor={subtitleColor}
+                  onPress={() => handleSelect(m.url, m.compatible)}
+                />
+              ),
+            )}
           </view>
         </>
       )}
