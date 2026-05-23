@@ -64,6 +64,5 @@
     "ios",
     "lynx.config.mjs",
     "lynx.ext.json"
-  ],
-  "//version-sync": "Keep version in sync with @tamer4lynx/tamer-dev-app — always bump both together"
+  ]
 }
