@@ -109,10 +109,13 @@ export default function AboutPage() {
         </text>
         <view className="DevLauncher__cardBlock">
           <text className="DevLauncher__hint" style={{ color: colors.onSurface }}>
-            {isOfficialApp ? getOfficialPackageLabel() : 'Dev client (npm)'}
+            {isOfficialApp ? getOfficialPackageLabel() : 'Tamer App'}
           </text>
           <text className="DevLauncher__aboutValue" style={{ color: colors.onSurface }}>
-            Version {DEV_CLIENT_PACKAGE_VERSION}
+            {/* nativeVersion reflects the app release version (tamer-dev-app).
+                tamer-dev-app and tamer-dev-client versions are kept in sync —
+                always bump both together when releasing. */}
+            Version {nativeVersion !== '—' ? nativeVersion : DEV_CLIENT_PACKAGE_VERSION}
           </text>
         </view>
       </view>
